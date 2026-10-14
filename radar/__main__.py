@@ -169,25 +169,39 @@ def cmd_deep(cfg, a):
         w = line.split("#")[0].strip().split()[0] if line.split("#")[0].strip() else ""
         if re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", w) and w not in addrs:
             addrs.append(w)
-    out = []
-    for i, w in enumerate(addrs, 1):
+    from concurrent.futures import ThreadPoolExecutor
+    import json as _json
+    done = {}
+    if os.path.exists(a.out):  # reanudar: no repetir wallets ya analizadas
+        try:
+            done = {r["metrics"]["wallet"]: r for r in _json.load(open(a.out))}
+        except Exception:
+            done = {}
+    todo = [w for w in addrs if w not in done]
+    lock = threading.Lock()
+    counter = [0]
+
+    def work(w):
         t0 = time.time()
         try:
             m, pos = deepwallet.analyze(h, w, cfg, days=cfg["copy"]["days"], max_pages=a.pages)
         except Exception as e:
-            print(f"[{i}/{len(addrs)}] {w[:8]}… error {str(e)[:70]}", flush=True)
-            continue
+            with lock:
+                counter[0] += 1
+                print(f"[{counter[0]}/{len(todo)}] {w[:8]}… error {str(e)[:70]}", flush=True)
+            return
         ok, why = deepwallet.passes(m, cfg)
         cov = m["coverage"]
-        print(f"[{i}/{len(addrs)}] {w[:10]}… {'CUMPLE' if ok else 'no cumple':9} cerradas {m['n_closed']:3} · retorno {('—' if m['roi'] is None else '%+.0f%%' % (m['roi']*100)):>8} · "
-              f"ganancia {m['pnl_sol']:+.1f} SOL · tenencia {('—' if m['median_hold_s'] is None else '%.0f min' % (m['median_hold_s']/60))} · "
-              f"{cov['txs']} tx / {cov['pages']} págs {'(60 d completos)' if cov['reached_start'] else '(INCOMPLETO)'} · {time.time()-t0:.0f}s", flush=True)
-        if not ok:
-            print("      motivos:", "; ".join(why), flush=True)
-        out.append({"metrics": m, "ok": ok, "why": why, "positions": [p for p in pos if p["closed"]]})
-    import json as _json
-    _json.dump(out, open(a.out, "w"), default=str)
-    print(f"guardado en {a.out}")
+        with lock:
+            counter[0] += 1
+            done[w] = {"metrics": m, "ok": ok, "why": why, "positions": [p for p in pos if p["closed"]]}
+            _json.dump(list(done.values()), open(a.out, "w"), default=str)
+            print(f"[{counter[0]}/{len(todo)}] {w[:10]}… {'CUMPLE' if ok else 'no cumple':9} cerradas {m['n_closed']:3} · +1000%: {m['hits10']} · retorno {('—' if m['roi'] is None else '%+.0f%%' % (m['roi']*100)):>6} · "
+                  f"tenencia {('—' if m['median_hold_s'] is None else '%.0f min' % (m['median_hold_s']/60))} · {cov['txs']} tx {'' if cov['reached_start'] else '(parcial)'} · {time.time()-t0:.0f}s", flush=True)
+
+    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+        list(ex.map(work, todo))
+    print(f"guardado en {a.out} ({len(done)} wallets)")
 
 
 def cmd_sweep(cfg, a):
@@ -370,6 +384,7 @@ def main():
     dp.add_argument("file")
     dp.add_argument("--pages", type=int, default=40)
     dp.add_argument("--out", default="data/deep.json")
+    dp.add_argument("--workers", type=int, default=1)
     sw = sub.add_parser("sweep")
     sw.add_argument("files", nargs="+")
     sw.add_argument("--prev", default=None)

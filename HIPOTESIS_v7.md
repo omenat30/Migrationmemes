@@ -42,3 +42,11 @@ Lógica en `radar/copysim.py` y en `dashboard/copy.html`; `tests/test_parity_js.
 ## Resultado del primer piloto (6 wallets)
 Ninguna cumple todos los filtros por defecto. Con tenencia mediana ≥ 30 min, 0 de 6 pasan; BcKqw3ZNH8 es la mejor (ROI +70 %,
 317 SOL sin sus 2 mejores operaciones, 2 operaciones ≥ x11) pero tiene mediana de 23 min y 27 % de salidas en menos de 2 min.
+
+## Resultado del barrido de 130 wallets (14-oct-2026, Helius)
+- 130 analizadas; 19 con alguna operación ≥ x11 (15 con 5 o más cerradas); **0 cumplen los filtros estrictos** (tenencia mediana ≥ 30 min,
+  ≤ 25 % de salidas en menos de 2 min). Casi todas las que tienen operaciones de +1000 % son rápidas: tenencia mediana de 2 a 5 min.
+- Con filtros medios (≥ 10 min, ≤ 35 % cortas, ≥ 30 operaciones): 3 wallets. Con laxos (≥ 2 min, ≤ 55 %): 7.
+- Las cifras de Expected R de esas wallets son de los 60 días en que se eligieron: techo, no expectativa. Varias tienen historial parcial
+  (límite de 4.000 transacciones).
+- El lote de 130 sale de mi cribado previo, no de las mejores listas de GMGN/Axiom; es una muestra pequeña y con sesgo.
