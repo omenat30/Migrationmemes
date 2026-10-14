@@ -46,7 +46,7 @@ def normalize_coin(raw, total_supply=1_000_000_000, sol_usd=None):
         # VERIFICADO: la mitad de los tokens no cotiza en SOL (quote_decimals 6 u 8; sus «reservas de SOL» son de otra
         # moneda). Una curva estándar en SOL tiene 9 decimales y reservas virtuales = reales + 30.
         "quote_decimals": raw.get("quote_decimals"),
-        "sol_quote": raw.get("quote_decimals") == 9 and abs(vs_ - rs_ - 30.0) < 0.01,
+        "sol_quote": raw.get("quote_decimals") == 9 and (bool(raw.get("complete")) or abs(vs_ - rs_ - 30.0) < 0.01),
         "created_ts": _ts(raw.get("created_timestamp")),
         "ath_mcap": float(ath) if ath else None,
         "sol_usd": sol_usd,

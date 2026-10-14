@@ -31,6 +31,22 @@ python -m radar backtest    # simula tu operación sobre lo grabado y da veredic
 **Para que el grabador no se pare** necesita un ordenador siempre encendido o un servidor barato. Hay un `Dockerfile` y
 un `docker-compose.yml` (sin verificar: no se pudieron construir en la sesión de desarrollo).
 
+## ¿Antes o después de migrar? ¿Se puede llegar a x3? (`HIPOTESIS_v5.md`)
+
+Alcance: solo tokens de pump.fun (mint terminado en `pump`, cotizados en SOL), 100 USD por operación, stop −60 %.
+Dos estudios con reglas escritas antes de ver resultados:
+
+- **Entrar después de migrar** (`python -m radar study`): se puede medir ya con migraciones reconstruidas de la cadena.
+  Cautela: esa muestra sale del listado de pump.fun y favorece a los tokens que siguen activos, así que es una **cota
+  superior**. Si aun así sale mal, la conclusión es sólida.
+- **Entrar antes de migrar** (`python -m radar record` y `backtest`): solo el grabador en vivo es **sin sesgo**, porque
+  ve también a los tokens que llegan al 90 % y no completan.
+
+Lo que ya se ve con datos reales, en el panel (sección «Migraciones reales», con enlaces a pump.fun, DexScreener y Solscan
+para comprobar cada token): tras migrar el precio suele subir en el primer minuto y después desangrarse; algunos se
+hunden de golpe entre dos muestreos, de modo que un stop manual del −60 % no se ejecuta a ese precio. Con muestras así de
+pequeñas **no hay conclusiones**, solo patrones a comprobar con más días de grabación.
+
 ## Verificado con datos reales (14 oct 2026) y lo que sigue roto
 
 Probado contra las APIs reales desde la sesión de desarrollo:
@@ -64,7 +80,7 @@ los primeros días.
    como «probable bot» cuando hacen demasiadas operaciones, pero no se puede distinguir a una persona con información
    privilegiada de una que acierta.
 4. **Esto está construido pero NO verificado contra las APIs reales.** Se desarrolló en un entorno sin acceso a
-   pump.fun, DexScreener, Helius ni GMGN. La lógica está probada con datos sintéticos (99 pruebas). Los campos de
+   pump.fun, DexScreener, Helius ni GMGN. La lógica está probada con datos sintéticos (107 pruebas). Los campos de
    GMGN se leyeron de su documentación oficial; los de pump.fun y Helius están escritos de memoria. **El primer paso es `python -m radar check`**: te dice, línea
    a línea, qué funciona y qué no. Lo que falle se arregla o se descarta; no se maquilla.
 5. **Cuatro de los filtros de seguridad son débiles o triviales en pump.fun** y el panel lo dice en cada token:
@@ -133,7 +149,7 @@ errores»). Con GMGN, Helius solo contrasta mint y freeze. Nunca pongas claves p
 ```
 python -m radar check        # prueba cada fuente y la forma de sus datos
 python -m radar calibrate    # mide cuántos SOL tenía la curva al migrar (ahora asumo 85)
-python -m unittest discover -s tests    # 99 pruebas de la lógica
+python -m unittest discover -s tests    # 107 pruebas de la lógica
 ```
 Si `calibrate` da otro valor, pon `"curve_target_sol": <valor>` en `config.json`. Si `check` falla en algo, **pásame
 la salida** y se arregla antes de seguir.
@@ -201,6 +217,8 @@ detectarla).
 | `python -m radar check` | Prueba cada fuente y el formato de sus datos |
 | `python -m radar calibrate` | Mide el umbral real de migración con tokens migrados |
 | `python -m radar record` | **Grabador de histórico** (déjalo corriendo) |
+| `python -m radar backfill` | Reconstruye de la cadena migraciones recientes ya ocurridas (precio exacto antes y después) |
+| `python -m radar study` | Estudio «entrar DESPUÉS de migrar» con objetivo x3 (`HIPOTESIS_v5.md`) |
 | `python -m radar backtest` | Simula tu operación (100 USD, stop −60 %) sobre lo grabado |
 | `python -m radar run` | Detector + panel en http://localhost:8787 |
 | `python -m radar serve` | Solo el panel, con la base de datos existente |
@@ -213,7 +231,7 @@ detectarla).
 `radar/evaluate.py` puntuación · `clusters.py` entidades · `wallet_history.py` historial · `security.py` filtros ·
 `manipulation.py` wash/circular · `costs.py` costes · `analysis.py` + `stats.py` medición · `engine.py` bucle ·
 `alerts.py` avisos y correo · `sources/` pump.fun, GMGN, Helius, DexScreener · `variants.json` las 12 variantes ·
-`recorder.py` y `backtest.py` · `bt_variants.json` · `HIPOTESIS.md`, `_v2`, `_v3` y `_v4` · `tests/`.
+`recorder.py`, `history.py`, `study.py` y `backtest.py` · `bt_variants.json` · `HIPOTESIS.md`, `_v2` a `_v5` · `tests/`.
 
 ## Seguridad del propio programa
 

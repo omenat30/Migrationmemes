@@ -67,6 +67,54 @@ def cmd_backtest(cfg, a):
     print(json.dumps(rep, indent=2, ensure_ascii=False, default=str))
 
 
+def cmd_backfill(cfg, a):
+    """Reconstruye desde la cadena migraciones recientes de pump.fun y las guarda (src=backfill). Ver HIPOTESIS_v5.md."""
+    from . import history
+    from .sources.dexscreener import DexScreener
+    from .sources.helius import Helius
+    from .sources.pumpfun import PumpFun
+    from .util import RateLimiter
+    st = _store(cfg)
+    pf, h, lim = PumpFun(cfg, RateLimiter(6)), Helius(cfg, RateLimiter(cfg["helius_rps"])), RateLimiter(3)
+    sol = DexScreener(cfg, lim).sol_usd()
+    pick, ncand = history.pick_recent_migrations(pf, lambda m: history.dex_pair(m, lim), sol, a.hours, a.n * 3, seed=a.seed)
+    # solo pools pequeños: los enormes no se pueden reconstruir hasta su inicio
+    pick = [(c, d) for c, d in pick if (d.get("liq") or 0) < a.max_liq and (d.get("mcap") or 0) < a.max_liq * 25][: a.n]
+    print(f"candidatos migrados en el listado: {ncand} · elegidos: {len(pick)}", flush=True)
+    ok = 0
+    for i, (c, d) in enumerate(pick, 1):
+        t0 = time.time()
+        try:
+            curve, cm = history.reconstruct_curve(h, c["mint"], c["bonding_curve"], sol, cfg)
+            pool, pm = history.pool_swaps(h, d["pool"], c["mint"], d["created"], d["created"] + 7200, sol, max_pages=a.pages)
+        except Exception as e:
+            print(f"[{i}/{len(pick)}] {c['symbol']}: error {str(e)[:80]}", flush=True)
+            continue
+        good = bool(pool) and pm["reached_start"] and bool(curve) and cm.get("trades", 0) >= 10
+        print(f"[{i}/{len(pick)}] {c['symbol']:10} curva {cm.get('trades', 0):4} trades · pool {pm['points']:4} ops · "
+              f"{'OK' if good else 'EXCLUIDO (' + ('pool no alcanzó el inicio' if not pm['reached_start'] else 'datos insuficientes') + ')'} · {time.time()-t0:.0f}s", flush=True)
+        if not good:
+            continue
+        st.rec_add(c["mint"], c["bonding_curve"], c.get("creator"), c["name"], c["symbol"], int(c.get("created_ts") or 0), int(curve[0]["ts"]),
+                   curve[0]["progress"], src="backfill", info={"url": d.get("url"), "pool": d["pool"], "liq_now": d.get("liq")})
+        for p in curve:
+            st.rec_point(c["mint"], p["ts"], p["progress"], p["price"], p["mcap"], p["vsol"], p["vtok"], None, "curve", sol)
+        for p in pool:
+            st.rec_point(c["mint"], p["ts"], 100.0, p["price"], p["mcap"], None, None, d.get("liq"), "amm", sol)
+        st.rec_complete(c["mint"], int(d["created"]))
+        ok += 1
+    print(f"hecho: {ok} migraciones reales reconstruidas", flush=True)
+
+
+def cmd_study(cfg, a):
+    """Estudio A: entrar después de migrar (100 USD, stop -60 %, objetivo x3). Ver HIPOTESIS_v5.md."""
+    from . import study
+    st = _store(cfg)
+    rep = study.run(st, cfg, int(time.time()), a.src)
+    st.set_meta("study_post", rep)
+    print(json.dumps(rep, indent=2, ensure_ascii=False, default=str))
+
+
 def cmd_analyze(cfg, a):
     st = _store(cfg)
     rep = analysis.build_report(st, cfg, int(time.time()))
@@ -203,13 +251,21 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("run", "serve", "demo", "check", "calibrate", "analyze", "record", "backtest"):
         sub.add_parser(n)
+    sd = sub.add_parser("study")
+    sd.add_argument("--src", default=None)
+    bf = sub.add_parser("backfill")
+    bf.add_argument("--n", type=int, default=25)
+    bf.add_argument("--hours", type=float, default=3.0)
+    bf.add_argument("--seed", type=int, default=7)
+    bf.add_argument("--max-liq", type=float, default=150000)
+    bf.add_argument("--pages", type=int, default=3)
     ex = sub.add_parser("export")
     ex.add_argument("out")
     ex.add_argument("--db", default=None)
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

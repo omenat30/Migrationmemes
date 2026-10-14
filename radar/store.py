@@ -44,10 +44,12 @@ class Store:
             self.db.execute("PRAGMA journal_mode=WAL")  # el hilo de muestreo y el de análisis escriben a la vez
             self.db.execute("PRAGMA busy_timeout=15000")
         self.db.executescript(SCHEMA)
-        try:  # bases creadas antes de añadir la columna
-            self.db.execute("ALTER TABLE tracked ADD COLUMN curve TEXT")
-        except sqlite3.OperationalError:
-            pass
+        for ddl in ("ALTER TABLE tracked ADD COLUMN curve TEXT", "ALTER TABLE rec_tokens ADD COLUMN src TEXT DEFAULT 'live'",
+                    "ALTER TABLE rec_tokens ADD COLUMN info TEXT"):
+            try:  # bases creadas antes de añadir las columnas
+                self.db.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
         self.db.commit()
 
     def clone(self):
@@ -177,9 +179,10 @@ class Store:
     def rec_get(self, mint):
         return self.db.execute("SELECT * FROM rec_tokens WHERE mint=?", (mint,)).fetchone()
 
-    def rec_add(self, mint, curve, creator, name, symbol, created_ts, now, progress):
-        self.db.execute("INSERT OR IGNORE INTO rec_tokens(mint,curve,creator,name,symbol,created_ts,first_ts,first_progress,last_ts) "
-                        "VALUES(?,?,?,?,?,?,?,?,?)", (mint, curve, creator, name, symbol, created_ts, now, progress, now))
+    def rec_add(self, mint, curve, creator, name, symbol, created_ts, now, progress, src="live", info=None):
+        self.db.execute("INSERT OR IGNORE INTO rec_tokens(mint,curve,creator,name,symbol,created_ts,first_ts,first_progress,last_ts,src,info) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?)", (mint, curve, creator, name, symbol, created_ts, now, progress, now, src,
+                                                          json.dumps(info) if info else None))
         self.db.commit()
 
     def rec_point(self, mint, ts, progress, price, mcap, vsol, vtok, liq, phase, sol_usd):
@@ -211,8 +214,9 @@ class Store:
     def rec_path_of(self, mint):
         return [dict(r) for r in self.db.execute("SELECT * FROM rec_path WHERE mint=? ORDER BY ts", (mint,)).fetchall()]
 
-    def rec_all(self):
-        return [dict(r) for r in self.db.execute("SELECT * FROM rec_tokens ORDER BY first_ts").fetchall()]
+    def rec_all(self, src=None):
+        q = "SELECT * FROM rec_tokens" + (" WHERE src=?" if src else "") + " ORDER BY first_ts"
+        return [dict(r) for r in self.db.execute(q, (src,) if src else ()).fetchall()]
 
     # --- caché de wallets
     def get_wallet(self, addr, max_age, now):
