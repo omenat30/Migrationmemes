@@ -76,7 +76,7 @@ def build_state(store, cfg, now=None, mode="live"):
                    "n_controls_tracked": store.count_tracked("control")},
         "candidates": cands, "alerts": al, "report": store.get_meta("report"),
         "backtest": store.get_meta("bt_report"), "study_post": store.get_meta("study_post"),
-        "history": history_rows(store, cfg, now),
+        "history": history_rows(store, cfg, now), "wallets": store.get_meta("wallet_report"),
         "recorder": {"last": store.get_meta("rec_last"),
                      "tokens": store.db.execute("SELECT COUNT(*) c FROM rec_tokens").fetchone()["c"],
                      "completed": store.db.execute("SELECT COUNT(*) c FROM rec_tokens WHERE completed_ts IS NOT NULL").fetchone()["c"],

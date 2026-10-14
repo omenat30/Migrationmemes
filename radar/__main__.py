@@ -115,6 +115,17 @@ def cmd_study(cfg, a):
     print(json.dumps(rep, indent=2, ensure_ascii=False, default=str))
 
 
+def cmd_wallets(cfg, a):
+    """Cribado de wallets: ¿quién gana de verdad y quién gana vendiéndote a ti? Ver HIPOTESIS_v6.md."""
+    from . import wallets
+    from .sources.helius import Helius
+    from .util import RateLimiter
+    st = _store(cfg)
+    rep = wallets.run(st, Helius(cfg, RateLimiter(cfg["helius_rps"])), cfg, int(time.time()), a.min_buy, log=lambda m: print(m, flush=True))
+    st.set_meta("wallet_report", rep)
+    print(json.dumps(rep, indent=2, ensure_ascii=False, default=str))
+
+
 def cmd_analyze(cfg, a):
     st = _store(cfg)
     rep = analysis.build_report(st, cfg, int(time.time()))
@@ -251,6 +262,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("run", "serve", "demo", "check", "calibrate", "analyze", "record", "backtest"):
         sub.add_parser(n)
+    wl = sub.add_parser("wallets")
+    wl.add_argument("--min-buy", type=float, default=1.0)
     sd = sub.add_parser("study")
     sd.add_argument("--src", default=None)
     bf = sub.add_parser("backfill")
@@ -265,7 +278,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

@@ -183,6 +183,11 @@ tr.detail td{background:var(--surface-2);padding:14px 16px 18px}
     <div class="alerts" id="alerts"></div>
   </section>
 
+  <section aria-labelledby="h-wa">
+    <div class="sh"><h2 id="h-wa">Wallets: ¿rentables o extractoras?</h2><span class="note">Lo que gana quien las sigue, no lo que ganan ellas</span></div>
+    <div id="wallets"></div>
+  </section>
+
   <section aria-labelledby="h-hi">
     <div class="sh"><h2 id="h-hi">Migraciones reales</h2><span class="note" id="hiNote"></span></div>
     <div id="history"></div>
@@ -468,6 +473,44 @@ function renderMeasure(){
   m.append(h('p',{class:'risk'},'Riesgos que no se pueden medir con un panel: la mayoría de memecoins va a cero; muchas wallets «rentables» son bots o gente con información privilegiada; y llegar por aviso significa entrar después que los bots. Si la medición dice «descartar», se descarta.'));
 }
 
+function renderWallets(){
+  var m=$('#wallets'); m.textContent='';
+  var W=S&&S.wallets;
+  if(!W){ m.append(h('div',{class:'empty'},'Aún no hay cribado de wallets. Se genera con: python -m radar wallets')); return; }
+  var order=['CANDIDATA','EXTRACTORA','BOT','PIERDE','SIN HISTORIAL'];
+  var desc={CANDIDATA:'ganan, aguantan y no salen corriendo',EXTRACTORA:'cierran casi todo en menos de 2 min',BOT:'más de 300 operaciones al día',PIERDE:'ganancia realizada ≤ 0',['SIN HISTORIAL']:'menos de 5 posiciones cerradas'};
+  var strip=h('div',{class:'strip',style:'margin-bottom:10px'});
+  order.forEach(function(c){ if(W.classes[c]!=null) strip.append(chip(c.toLowerCase()+' · '+W.classes[c],c==='CANDIDATA'?'good':(c==='EXTRACTORA'||c==='BOT'?'bad':'plain'))); });
+  m.append(strip);
+  m.append(h('p',{class:'risk',style:'margin-top:0'},W.n_screened+' wallets que compraron al menos 1 SOL en los tokens vigilados, clasificadas con sus últimas 100 transacciones. Es un cribado: una wallet solo es «de fiar» si sigue ganando en tokens y días que no se usaron para elegirla.'));
+  var tb=h('tbody');
+  order.forEach(function(c){
+    var f=W.follower&&W.follower[c]; if(!f) return;
+    [30,60,120].forEach(function(d){
+      var x=f.by_delay[d]||{n:0};
+      tb.append(h('tr',{class:'row'},h('td',null,c.toLowerCase()+' · copia con '+d+' s de retraso'),
+        h('td',{class:'r num'},String(x.n)),h('td',{class:'r num'},x.n?pct(x.win*100,0):'—'),
+        h('td',{class:'r num'},x.n?sret(x.mean):'—'),h('td',{class:'r num'},x.n?sret(x.median):'—'),
+        h('td',{class:'r num'},x.ci90?(sret(x.ci90[0])+' a '+sret(x.ci90[1])):'—')));
+    });
+  });
+  m.append(h('div',{class:'vbars'},h('h3',null,'¿Qué gana un seguidor que copia sus compras con retraso? (neto de 1 % por lado)')));
+  m.append(h('div',{class:'tablebox'},h('table',{style:'min-width:720px'},h('thead',null,h('tr',null,h('th',null,'Grupo'),h('th',{class:'r'},'Copias resueltas'),h('th',{class:'r'},'Aciertos'),h('th',{class:'r'},'Media'),h('th',{class:'r'},'Mediana'),h('th',{class:'r'},'Intervalo 90 %'))),tb)));
+  if(W.candidates&&W.candidates.length){
+    var cb=h('tbody');
+    W.candidates.slice(0,25).forEach(function(c){
+      cb.append(h('tr',{class:'row'},
+        h('td',null,h('span',{class:'mono',style:'overflow-wrap:anywhere'},c.wallet)),
+        h('td',{class:'r num'},String(c.closed)),h('td',{class:'r num'},c.win_rate!=null?pct(c.win_rate*100,0):'—'),
+        h('td',{class:'r num'},nf1.format(c.pnl_sol)+' SOL'),h('td',{class:'r num'},fmtDur(c.median_hold_s)),
+        h('td',{class:'r num'},pct((c.quick_exit_ratio||0)*100,0)),
+        h('td',null,h('div',{class:'lk'},link('Solscan','https://solscan.io/account/'+encodeURIComponent(c.wallet)),link('GMGN','https://gmgn.ai/sol/address/'+encodeURIComponent(c.wallet))))));
+    });
+    m.append(h('div',{class:'vbars'},h('h3',null,'Candidatas (contrástalas en tu plataforma: pega la dirección en GMGN o Axiom)')));
+    m.append(h('div',{class:'tablebox'},h('table',{style:'min-width:760px'},h('thead',null,h('tr',null,h('th',null,'Wallet'),h('th',{class:'r'},'Posiciones cerradas'),h('th',{class:'r'},'Aciertos'),h('th',{class:'r'},'Ganancia realizada'),h('th',{class:'r'},'Tenencia mediana'),h('th',{class:'r'},'Salidas < 2 min'),h('th',null,'Verificar'))),cb)));
+  } else m.append(h('p',{class:'risk'},'Ninguna wallet cumple todas las condiciones de candidata en esta muestra.'));
+}
+
 function fmtDur(sec){ if(sec==null) return '—'; if(sec<90) return Math.round(sec)+' s'; return nf1.format(sec/60)+' min'; }
 function link(text,href){ return h('a',{href:href,target:'_blank',rel:'noopener noreferrer'},text); }
 function renderHistory(){
@@ -593,7 +636,7 @@ function renderHealth(){
 }
 function alert_inline(msg){ var b=$('#banners'); b.prepend(h('div',{class:'banner demo',role:'alert'},msg)); }
 
-function render(){ renderStrip(); renderBanners(); renderFigures(); renderCandidates(); renderAlerts(); renderHistory(); renderBacktest(); renderMeasure(); renderHealth(); }
+function render(){ renderStrip(); renderBanners(); renderFigures(); renderCandidates(); renderAlerts(); renderWallets(); renderHistory(); renderBacktest(); renderMeasure(); renderHealth(); }
 $('#showDisc').addEventListener('change',renderCandidates);
 refresh();
 })();
