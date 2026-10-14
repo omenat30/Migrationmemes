@@ -157,6 +157,77 @@ def cmd_judge(cfg, a):
     print("Una CANDIDATA no es «de fiar»: son solo sus últimas 100 transacciones. Contrástala con su PnL a 30 días en tu plataforma.")
 
 
+def cmd_deep(cfg, a):
+    """Análisis de 60 días de las wallets de un archivo (una dirección por línea) con los filtros del panel de copia."""
+    import re
+    from . import deepwallet
+    from .sources.helius import Helius
+    from .util import RateLimiter
+    h = Helius(cfg, RateLimiter(cfg["helius_rps"]))
+    addrs = []
+    for line in open(a.file, encoding="utf-8"):
+        w = line.split("#")[0].strip().split()[0] if line.split("#")[0].strip() else ""
+        if re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", w) and w not in addrs:
+            addrs.append(w)
+    out = []
+    for i, w in enumerate(addrs, 1):
+        t0 = time.time()
+        try:
+            m, pos = deepwallet.analyze(h, w, cfg, days=cfg["copy"]["days"], max_pages=a.pages)
+        except Exception as e:
+            print(f"[{i}/{len(addrs)}] {w[:8]}… error {str(e)[:70]}", flush=True)
+            continue
+        ok, why = deepwallet.passes(m, cfg)
+        cov = m["coverage"]
+        print(f"[{i}/{len(addrs)}] {w[:10]}… {'CUMPLE' if ok else 'no cumple':9} cerradas {m['n_closed']:3} · retorno {('—' if m['roi'] is None else '%+.0f%%' % (m['roi']*100)):>8} · "
+              f"ganancia {m['pnl_sol']:+.1f} SOL · tenencia {('—' if m['median_hold_s'] is None else '%.0f min' % (m['median_hold_s']/60))} · "
+              f"{cov['txs']} tx / {cov['pages']} págs {'(60 d completos)' if cov['reached_start'] else '(INCOMPLETO)'} · {time.time()-t0:.0f}s", flush=True)
+        if not ok:
+            print("      motivos:", "; ".join(why), flush=True)
+        out.append({"metrics": m, "ok": ok, "why": why, "positions": [p for p in pos if p["closed"]]})
+    import json as _json
+    _json.dump(out, open(a.out, "w"), default=str)
+    print(f"guardado en {a.out}")
+
+
+def cmd_sweep(cfg, a):
+    """Barrido diario: analiza las wallets de los archivos de semillas y escribe los documentos para la base de datos del panel.
+    --prev: JSON {dirección: {joined_ts, status}} con el estado actual del panel (lo lee la rutina desde la base de datos)."""
+    import re
+    from . import deepwallet, sweep
+    from .sources.dexscreener import DexScreener
+    from .sources.helius import Helius
+    from .util import RateLimiter
+    h = Helius(cfg, RateLimiter(cfg["helius_rps"]))
+    addrs = []
+    for f in a.files:
+        for line in open(f, encoding="utf-8"):
+            t = line.split("#")[0].strip().split()
+            if t and re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", t[0]) and t[0] not in addrs:
+                addrs.append(t[0])
+    prev = json.load(open(a.prev)) if a.prev else {}
+    for w in prev:  # las que ya estaban en el panel se reanalizan siempre
+        if w not in addrs:
+            addrs.append(w)
+    now = int(time.time())
+    results = []
+    for i, w in enumerate(addrs, 1):
+        try:
+            m, pos = deepwallet.analyze(h, w, cfg, days=cfg["copy"]["days"], max_pages=a.pages, now=now)
+        except Exception as e:
+            print(f"[{i}/{len(addrs)}] {w[:8]}… error {str(e)[:70]}", flush=True)
+            continue
+        results.append({"metrics": m, "positions": pos})
+        print(f"[{i}/{len(addrs)}] {w[:10]}… cerradas {m['n_closed']} · +1000%: {m['hits10']}", flush=True)
+    try:
+        sol = DexScreener(cfg, RateLimiter(2)).sol_usd()
+    except Exception:
+        sol = None
+    docs, meta = sweep.build_docs(results, prev, cfg, now=now, sol_usd=sol)
+    json.dump({"wallets": docs, "meta": meta}, open(a.out, "w"))
+    print(f"{len(docs)} wallets a guardar · {meta['active']} activas · {len(meta['changes'])} cambios → {a.out}")
+
+
 def cmd_analyze(cfg, a):
     st = _store(cfg)
     rep = analysis.build_report(st, cfg, int(time.time()))
@@ -295,6 +366,15 @@ def main():
         sub.add_parser(n)
     wl = sub.add_parser("wallets")
     wl.add_argument("--min-buy", type=float, default=1.0)
+    dp = sub.add_parser("deep")
+    dp.add_argument("file")
+    dp.add_argument("--pages", type=int, default=40)
+    dp.add_argument("--out", default="data/deep.json")
+    sw = sub.add_parser("sweep")
+    sw.add_argument("files", nargs="+")
+    sw.add_argument("--prev", default=None)
+    sw.add_argument("--pages", type=int, default=40)
+    sw.add_argument("--out", default="data/sweep_out.json")
     jd = sub.add_parser("judge")
     jd.add_argument("file")
     sd = sub.add_parser("study")
@@ -311,7 +391,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

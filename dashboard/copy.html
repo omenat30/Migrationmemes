@@ -1,0 +1,340 @@
+<title>Wallets copiables</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: cabecera con estado del barrido, barra fija de controles, 5 cifras, curva de capital, tabla de wallets, cambios y avisos. */
+:root{
+  --bg:#f3f5f4; --panel:#ffffff; --fg:#14201c; --muted:#5d6b66; --line:#d9e0dd; --soft:#e9eeec;
+  --accent:#2f4bd8; --accent-soft:#e3e8fb;
+  --good:#17803d; --bad:#c2391b; --warn:#a86a00; --warn-soft:#fbf0d9;
+  --f-display:"Bricolage Grotesque","IBM Plex Sans",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --panel:#171f1c; --fg:#e6ede9; --muted:#93a39c; --line:#2a3631; --soft:#202b27;
+  --accent:#8fa2ff; --accent-soft:#222a52;
+  --good:#4cc27a; --bad:#ff7a5c; --warn:#e3a53a; --warn-soft:#33290f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --panel:#171f1c; --fg:#e6ede9; --muted:#93a39c; --line:#2a3631; --soft:#202b27;
+  --accent:#8fa2ff; --accent-soft:#222a52;
+  --good:#4cc27a; --bad:#ff7a5c; --warn:#e3a53a; --warn-soft:#33290f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--f-display);font-size:28px;line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-family:var(--f-display);font-size:17px;margin:0 0 8px;text-wrap:balance}
+.mono,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+a{color:var(--accent)}
+header{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:flex-end;justify-content:space-between}
+.sub{margin:6px 0 0;max-width:62ch;color:var(--muted)}
+.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;background:var(--panel)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.live .dot{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 25%,transparent)}
+.stale .dot{background:var(--warn)}
+.controls{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld>label,.fld>span.l{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+input[type=number]{font:inherit;font-family:var(--f-mono);width:104px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+input[type=number].sm{width:84px}
+button{font:inherit;cursor:pointer;color:var(--fg)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex-wrap:wrap}
+.seg button{border:0;background:var(--bg);padding:6px 10px;font-family:var(--f-mono);font-size:13px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--bg);font-weight:600}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px}
+details>summary{cursor:pointer;color:var(--accent);font-size:13px;width:fit-content}
+button:focus-visible,input:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
+.tile .l{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-family:var(--f-mono);font-size:26px;font-weight:500;margin-top:2px;overflow-wrap:anywhere}
+.tile .n{font-size:12px;color:var(--muted);margin-top:2px}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+svg{display:block;width:100%;height:auto}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:980px}
+th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--soft);white-space:nowrap}
+th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--panel)}
+th:first-child,td:first-child{text-align:left}
+td.addr a{font-family:var(--f-mono)}
+.tag{font-size:11px;border-radius:4px;padding:1px 6px;background:var(--soft);color:var(--muted)}
+.tag.new{background:var(--accent-soft);color:var(--accent)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.note{background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);border-radius:8px;padding:10px 14px;color:var(--fg)}
+.note b{color:var(--warn)}
+ul.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+ul.log li{display:flex;gap:10px;flex-wrap:wrap}
+.empty{padding:26px 8px;text-align:center;color:var(--muted)}
+.fail td{color:var(--muted)}
+td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
+@media (max-width:560px){h1{font-size:24px}.tile .v{font-size:22px}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Wallets copiables</h1>
+      <p class="sub">Wallets de Solana con operaciones sueltas de +1000 % o más en 60 días que no entran y salen en minutos. Simula qué habrías ganado copiándolas con tu tamaño por operación.</p>
+    </div>
+    <div class="status" id="status"><span class="pill stale"><span class="dot"></span>conectando…</span></div>
+  </header>
+
+  <section class="controls" aria-label="Controles de la simulación">
+    <div class="row">
+      <div class="fld">
+        <label for="size">Por operación (USD)</label>
+        <input type="number" id="size" min="1" step="10" value="100">
+      </div>
+      <div class="fld"><span class="l">Atajos</span>
+        <div class="seg" id="presets" role="group" aria-label="Importes"></div></div>
+      <div class="fld"><span class="l">Retraso al copiar</span>
+        <div class="seg" id="delay" role="group" aria-label="Retraso"></div></div>
+      <div class="fld"><span class="l">Datos</span>
+        <div class="seg" id="mode" role="group" aria-label="Periodo">
+          <button type="button" data-v="hist" aria-pressed="true">60 días</button>
+          <button type="button" data-v="fwd" aria-pressed="false">Desde que entró</button></div></div>
+      <label class="chk"><input type="checkbox" id="stop" checked> Stop −60 %</label>
+    </div>
+    <details>
+      <summary>Filtros y supuestos</summary>
+      <div class="row" style="margin-top:10px">
+        <div class="fld"><label for="f_hold">Tenencia mediana mín. (min)</label><input class="sm" type="number" id="f_hold" min="0" value="30"></div>
+        <div class="fld"><label for="f_short">Salidas &lt;2 min máx. (%)</label><input class="sm" type="number" id="f_short" min="0" max="100" value="25"></div>
+        <div class="fld"><label for="f_ops">Operaciones mín.</label><input class="sm" type="number" id="f_ops" min="0" value="20"></div>
+        <div class="fld"><label for="f_hits">Ops. ≥ +1000 % mín.</label><input class="sm" type="number" id="f_hits" min="0" value="1"></div>
+        <div class="fld"><label for="f_top">Wallets a mostrar</label><input class="sm" type="number" id="f_top" min="1" max="50" value="10"></div>
+        <div class="fld"><label for="a_fee">Comisión por lado (%)</label><input class="sm" type="number" id="a_fee" step="0.1" value="1"></div>
+        <div class="fld"><label for="a_imp">Impacto por 1.000 USD (%)</label><input class="sm" type="number" id="a_imp" step="0.1" value="2"></div>
+        <div class="fld"><label for="a_pen">Entrada tardía (%)</label><input class="sm" type="number" id="a_pen" step="1" placeholder="auto"></div>
+      </div>
+      <p class="muted" style="margin:8px 0 0;font-size:12px">Comisión e impacto son supuestos sin verificar. La entrada tardía por defecto es la medida en tokens cerca de migrar: +9 % a 30 s, +17 % a 60 s, +20 % a 120 s. El stop se supone ejecutado al −60 %, algo optimista en una caída brusca.</p>
+    </details>
+  </section>
+
+  <div id="msg"></div>
+
+  <section class="tiles" id="tiles" aria-live="polite"></section>
+
+  <section class="card">
+    <h2>Capital acumulado copiando todas las wallets mostradas</h2>
+    <div id="chart"></div>
+    <p class="muted" style="margin:6px 0 0;font-size:12px">Una operación detrás de otra, sin límite de capital abierto a la vez. Con varias wallets entrando a la vez necesitarías más dinero del que sugiere el importe por operación.</p>
+  </section>
+
+  <section class="card">
+    <h2>Wallets que cumplen tus filtros</h2>
+    <div class="scroll"><table id="tbl"></table></div>
+  </section>
+
+  <section class="card" id="failcard" hidden>
+    <details><summary id="failsum"></summary>
+      <div class="scroll" style="margin-top:8px"><table id="tblfail" style="min-width:640px"></table></div></details>
+  </section>
+
+  <section class="card">
+    <h2>Último barrido: cambios</h2>
+    <ul class="log" id="log"><li class="muted">Sin datos todavía.</li></ul>
+  </section>
+
+  <section class="note" id="bias"></section>
+</div>
+
+<script>
+/* ===== BEGIN SIM (misma lógica que radar/copysim.py; prueba de paridad en tests/) ===== */
+var ENTRY_PENALTY={30:0.09,60:0.17,120:0.20};
+function tradeNet(mult,pen,feePct,impPer1k,sizeUsd,stopPct){
+  var c=Math.min(feePct/100+(impPer1k/100)*(sizeUsd/1000),0.95);
+  var net=mult*Math.pow(1-c,2)/(1+pen)-1;
+  if(stopPct!=null)net=Math.max(net,-stopPct/100);
+  return net;
+}
+function simulate(positions,o){
+  var pen=(o.pen==null)?(ENTRY_PENALTY[o.delay]!=null?ENTRY_PENALTY[o.delay]:0.17):o.pen;
+  var stop=o.stopPct==null?60:o.stopPct;
+  var ps=positions.slice().sort(function(a,b){return a[0]-b[0]});
+  var rows=[];
+  for(var i=0;i<ps.length;i++){
+    var p=ps[i];
+    if(o.since!=null&&p[0]<o.since)continue;
+    var net=tradeNet(p[2],pen,o.fee,o.imp,o.size,o.apply?stop:null);
+    rows.push([p[0],net,o.size*net,net/(stop/100)]);
+  }
+  var n=rows.length,eq=0,peak=0,dd=0,curve=[],sr=0,wins=0;
+  rows.forEach(function(r){eq+=r[2];peak=Math.max(peak,eq);dd=Math.max(dd,peak-eq);curve.push([r[0],eq]);sr+=r[3];if(r[1]>0)wins++});
+  var er=n?sr/n:null,v=0;
+  if(n>1){rows.forEach(function(r){v+=Math.pow(r[3]-er,2)});v=v/(n-1)}
+  return {n:n,win:n?wins/n:null,expectedR:er,seR:n>1?Math.sqrt(v/n):null,totalUsd:eq,maxDd:dd,curve:curve,rows:rows};
+}
+/* ===== END SIM ===== */
+
+function median(a){if(!a.length)return null;var s=a.slice().sort(function(x,y){return x-y}),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2}
+var $=function(id){return document.getElementById(id)};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function short(a){return a.slice(0,4)+"…"+a.slice(-4)}
+function fmtUsd(x){if(x==null||isNaN(x))return "—";var s=Math.round(Math.abs(x)).toLocaleString("es-ES");return (x<0&&Math.round(x)!==0?"−":"")+"$"+s}
+function fmtPct(x){return x==null?"—":(x*100).toFixed(0)+" %"}
+function fmtR(x){return x==null?"—":(x>=0?"+":"−")+Math.abs(x).toFixed(2)+" R"}
+function fmtMin(s){return s==null?"—":(s<3600?(s/60).toFixed(0)+" min":(s/3600).toFixed(1)+" h")}
+function fmtDate(ts){return new Date(ts*1000).toLocaleDateString("es-ES",{day:"2-digit",month:"short"})}
+function cls(x){return x==null?"":x>0?"pos":x<0?"neg":""}
+
+var state={size:100,delay:30,stop:true,mode:"hist",hold:30,short:25,ops:20,hits:1,top:10,fee:1,imp:2,pen:null};
+var wallets=[],meta=null,connected=false;
+
+function wmetrics(w,since){
+  var pos=(w.pos||[]).filter(function(p){return since==null||p[0]>=since});
+  var holds=pos.filter(function(p){return p[1]!=null&&p[1]>=0}).map(function(p){return p[1]});
+  var mults=pos.map(function(p){return p[2]});
+  var pnl=pos.map(function(p){return p[3]*(p[2]-1)}).sort(function(a,b){return b-a});
+  var cost=pos.reduce(function(s,p){return s+p[3]},0);
+  var tot=pnl.reduce(function(s,x){return s+x},0);
+  return {pos:pos,n:pos.length,hits:mults.filter(function(x){return x>=11}).length,
+    medHold:median(holds),shortShare:holds.length?holds.filter(function(h){return h<120}).length/holds.length:null,
+    best:mults.length?Math.max.apply(null,mults):null,roi:cost>0?tot/cost:null,pnl:tot,
+    pnlEx2:pos.length>2?pnl.slice(2).reduce(function(s,x){return s+x},0):null,
+    medCost:median(pos.map(function(p){return p[3]}))};
+}
+function simOpts(){return {size:state.size,delay:state.delay,pen:state.pen,fee:state.fee,imp:state.imp,stopPct:60,apply:state.stop}}
+function evalWallet(w){
+  var since=state.mode==="fwd"?(w.joined_ts||Infinity):null;
+  var m=wmetrics(w,since);
+  var why=[];
+  if(w.m&&w.m.bot)why.push("parece un bot");
+  if(m.n<state.ops)why.push("operaciones "+m.n+" < "+state.ops);
+  if(m.hits<state.hits)why.push("sólo "+m.hits+" op. de +1000 %");
+  if(m.medHold==null||m.medHold<state.hold*60)why.push("tenencia mediana "+fmtMin(m.medHold)+" < "+state.hold+" min");
+  if(m.shortShare!=null&&m.shortShare*100>state.short)why.push((m.shortShare*100).toFixed(0)+" % de salidas en <2 min");
+  if(!(m.roi>0)||m.pnlEx2==null||!(m.pnlEx2>0))why.push("sin sus 2 mejores operaciones no gana");
+  var sim=simulate(m.pos,simOpts());
+  var sorted=m.pos.slice().sort(function(a,b){return b[2]-a[2]});
+  var sim2=simulate(sorted.slice(2),simOpts());
+  return {w:w,m:m,why:why,ok:!why.length,sim:sim,totalEx2:m.n>2?sim2.totalUsd:null};
+}
+
+function render(){
+  var sol=(meta&&meta.sol_usd)||null;
+  var ev=wallets.map(evalWallet);
+  var ok=ev.filter(function(e){return e.ok}).sort(function(a,b){return (b.sim.expectedR==null?-9:b.sim.expectedR)-(a.sim.expectedR==null?-9:a.sim.expectedR)}).slice(0,state.top);
+  var fail=ev.filter(function(e){return !e.ok}).sort(function(a,b){return b.m.hits-a.m.hits});
+
+  var parts=[];
+  if(!connected)parts.push('<span class="pill stale"><span class="dot"></span>sin conexión a la base de datos</span>');
+  else if(meta&&meta.ts){var age=(Date.now()/1000-meta.ts)/3600;
+    parts.push('<span class="pill '+(age<36?"live":"stale")+'"><span class="dot"></span>último barrido hace '+(age<1?"menos de 1 h":age<48?age.toFixed(0)+" h":(age/24).toFixed(0)+" días")+'</span>');
+    parts.push('<span class="pill">'+meta.analyzed+' wallets analizadas · '+ok.length+' de '+state.top+' puestos cubiertos</span>');
+    if(sol)parts.push('<span class="pill mono">SOL $'+sol.toFixed(0)+'</span>');
+  } else parts.push('<span class="pill stale"><span class="dot"></span>aún no hay ningún barrido</span>');
+  $("status").innerHTML=parts.join("");
+
+  var msg=$("msg");
+  if(!connected)msg.innerHTML='<div class="note"><b>Sin base de datos.</b> Abre esta página con sesión iniciada para leer los barridos.</div>';
+  else if(!wallets.length)msg.innerHTML='<div class="note"><b>Todavía no hay wallets.</b> El primer barrido cargará aquí las wallets analizadas.</div>';
+  else if(ok.length<state.top)msg.innerHTML='<div class="note"><b>Sólo '+ok.length+' de '+state.top+' wallets cumplen tus filtros.</b> No se rellena con wallets que no cumplan. Si bajas los filtros entran más, pero de peor calidad.</div>';
+  else msg.innerHTML="";
+
+  var all=[];ok.forEach(function(e){e.m.pos.forEach(function(p){all.push(p)})});
+  var agg=simulate(all,simOpts());
+  var ci=(agg.expectedR!=null&&agg.seR!=null)?"intervalo 95 %: "+(agg.expectedR-1.96*agg.seR).toFixed(2)+" a "+(agg.expectedR+1.96*agg.seR).toFixed(2):"1R = lo que pierdes si salta el stop";
+  var tiles=[
+    ["Expected R",fmtR(agg.expectedR),cls(agg.expectedR),ci],
+    ["Resultado",agg.n?fmtUsd(agg.totalUsd):"—",agg.n?cls(agg.totalUsd):"","con "+fmtUsd(state.size)+" por operación"],
+    ["Aciertos",agg.win==null?"—":fmtPct(agg.win),"","operaciones que acaban en positivo"],
+    ["Peor caída",agg.n?fmtUsd(-agg.maxDd):"—",agg.maxDd>0?"neg":"","del máximo al mínimo posterior"],
+    ["Operaciones",String(agg.n),"",ok.length+" wallets"]
+  ];
+  $("tiles").innerHTML=tiles.map(function(t){return '<div class="tile"><div class="l">'+t[0]+'</div><div class="v '+t[2]+'">'+t[1]+'</div><div class="n">'+t[3]+'</div></div>'}).join("");
+  chart(agg);
+
+  var head='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Mejor</th><th>Tenencia med.</th><th>Salidas &lt;2 min</th><th>Gana sin sus 2 mejores</th><th>Expected R copiando</th><th>Resultado tuyo</th><th>Sin sus 2 mejores</th><th>Su op. típica</th></tr></thead>';
+  $("tbl").innerHTML=head+(ok.length?'<tbody>'+ok.map(function(e){return row(e,sol)}).join("")+'</tbody>':'<tbody><tr><td colspan="11" class="empty">Ninguna wallet cumple estos filtros ahora mismo.</td></tr></tbody>');
+
+  $("failcard").hidden=!fail.length;
+  $("failsum").textContent=fail.length+" wallets analizadas que no cumplen tus filtros (y por qué)";
+  $("tblfail").innerHTML='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Tenencia med.</th><th style="text-align:left">Motivos</th></tr></thead><tbody>'+
+    fail.slice(0,60).map(function(e){return '<tr class="fail"><td class="addr">'+addr(e.w.addr)+'</td><td class="num">'+e.m.n+'</td><td class="num">'+e.m.hits+'</td><td class="num">'+fmtMin(e.m.medHold)+'</td><td class="why">'+esc(e.why.join(" · "))+'</td></tr>'}).join("")+'</tbody>';
+
+  var ch=(meta&&meta.changes)||[];
+  $("log").innerHTML=ch.length?ch.map(function(c){return '<li><span class="tag '+(c.type==="add"?"new":"warn")+'">'+(c.type==="add"?"entra":"sale")+'</span><span class="mono">'+esc(short(c.wallet||""))+'</span><span class="muted">'+esc(c.why||"")+'</span></li>'}).join(""):'<li class="muted">Sin cambios registrados.</li>';
+  $("bias").innerHTML='<b>Cómo leer esto.</b> Las wallets se eligen mirando sus últimos 60 días, así que ese tramo sale inflado (sesgo del ganador). La prueba que cuenta es «Desde que entró», que sólo usa operaciones posteriores a la fecha en que la wallet entró en la lista. Mientras ese tramo sea corto, trata el Expected R de 60 días como un máximo y no como una expectativa. Es una simulación: no ejecuta compras ni ventas y no es consejo financiero.';
+}
+function addr(a){return '<a href="https://solscan.io/account/'+esc(a)+'" target="_blank" rel="noopener">'+esc(short(a))+'</a> <a class="muted" style="font-size:11px" href="https://gmgn.ai/sol/address/'+esc(a)+'" target="_blank" rel="noopener">gmgn</a>'}
+function row(e,sol){
+  var m=e.m,s=e.sim;
+  var typ=(m.medCost!=null&&sol)?"$"+Math.round(m.medCost*sol).toLocaleString("es-ES"):"—";
+  var big=(m.medCost!=null&&sol&&state.size>m.medCost*sol*3)?' <span class="tag warn" title="Tu tamaño es más de 3 veces el suyo: el impacto real puede ser mayor que el supuesto">tamaño alto</span>':"";
+  var isNew=e.w.joined_ts&&(Date.now()/1000-e.w.joined_ts)<3*86400;
+  return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+'</td>'+
+   '<td class="num">'+m.n+'</td><td class="num">'+m.hits+'</td><td class="num">x'+(m.best==null?"—":m.best.toFixed(1))+'</td>'+
+   '<td class="num">'+fmtMin(m.medHold)+'</td><td class="num">'+fmtPct(m.shortShare)+'</td>'+
+   '<td class="num '+cls(m.pnlEx2)+'">'+(m.pnlEx2==null?"—":(m.pnlEx2>=0?"+":"−")+Math.abs(m.pnlEx2).toFixed(1)+" SOL")+'</td>'+
+   '<td class="num '+cls(s.expectedR)+'">'+fmtR(s.expectedR)+'</td><td class="num '+cls(s.totalUsd)+'">'+fmtUsd(s.totalUsd)+'</td>'+
+   '<td class="num '+cls(e.totalEx2)+'">'+fmtUsd(e.totalEx2)+'</td><td class="num">'+typ+big+'</td></tr>';
+}
+
+function niceStep(raw){var p=Math.pow(10,Math.floor(Math.log10(Math.max(raw,1e-9)))),f=raw/p;return (f<1.5?1:f<3?2:f<7?5:10)*p}
+function chart(agg){
+  var el=$("chart");
+  if(!agg.n){el.innerHTML='<div class="empty">Sin operaciones que simular con estos filtros.</div>';return}
+  var W=900,H=300,L=70,R=16,T=14,B=30;
+  var xs=agg.curve.map(function(c){return c[0]}),ys=[0].concat(agg.curve.map(function(c){return c[1]}));
+  var x0=xs[0],x1=xs[xs.length-1];if(x1<=x0)x1=x0+1;
+  var y0=Math.min.apply(null,ys),y1=Math.max.apply(null,ys);
+  if(y1===y0)y1=y0+1;
+  var pad=(y1-y0)*0.08;y0-=pad;y1+=pad;
+  var X=function(t){return L+(t-x0)/(x1-x0)*(W-L-R)},Y=function(v){return T+(1-(v-y0)/(y1-y0))*(H-T-B)};
+  var step=niceStep((y1-y0)/4),g="";
+  for(var v=Math.ceil(y0/step)*step;v<=y1;v+=step){g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v).toFixed(1)+'" y2="'+Y(v).toFixed(1)+'" stroke="var(--line)" stroke-width="'+(Math.abs(v)<step/1000?1.6:0.6)+'"/><text x="'+(L-8)+'" y="'+(Y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--f-mono)">'+fmtUsd(v)+'</text>'}
+  var pts=agg.curve.map(function(c){return X(c[0]).toFixed(1)+","+Y(c[1]).toFixed(1)});
+  var last=agg.curve[agg.curve.length-1];
+  var area='M'+X(x0).toFixed(1)+','+Y(0).toFixed(1)+' L'+pts.join(" L")+' L'+X(last[0]).toFixed(1)+','+Y(0).toFixed(1)+' Z';
+  var col=last[1]>=0?"var(--good)":"var(--bad)",ticks="";
+  for(var i=0;i<=4;i++){var t=x0+(x1-x0)*i/4;ticks+='<text x="'+X(t).toFixed(1)+'" y="'+(H-8)+'" text-anchor="'+(i===0?"start":i===4?"end":"middle")+'" font-size="11" fill="var(--muted)" font-family="var(--f-mono)">'+fmtDate(t)+'</text>'}
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Capital acumulado simulado">'+g+
+    '<path d="'+area+'" fill="'+col+'" opacity="0.12"/><polyline points="'+pts.join(" ")+'" fill="none" stroke="'+col+'" stroke-width="1.8" stroke-linejoin="round"/>'+
+    '<circle cx="'+X(last[0]).toFixed(1)+'" cy="'+Y(last[1]).toFixed(1)+'" r="4" fill="'+col+'"/>'+ticks+'</svg>';
+}
+
+function buildControls(){
+  $("presets").innerHTML=[50,100,250,500,1000,2500].map(function(v){return '<button type="button" data-v="'+v+'" aria-pressed="false">'+v+'</button>'}).join("");
+  $("delay").innerHTML=[30,60,120].map(function(v){return '<button type="button" data-v="'+v+'" aria-pressed="false">'+v+' s</button>'}).join("");
+}
+function sync(){
+  [].forEach.call($("presets").children,function(b){b.setAttribute("aria-pressed",String(+b.dataset.v===state.size))});
+  [].forEach.call($("delay").children,function(b){b.setAttribute("aria-pressed",String(+b.dataset.v===state.delay))});
+  [].forEach.call($("mode").children,function(b){b.setAttribute("aria-pressed",String(b.dataset.v===state.mode))});
+}
+function num(id,fb){var v=parseFloat($(id).value);return isFinite(v)&&v>=0?v:fb}
+function readInputs(){
+  state.size=Math.max(1,num("size",100));state.stop=$("stop").checked;
+  state.hold=num("f_hold",30);state.short=num("f_short",25);state.ops=num("f_ops",20);state.hits=num("f_hits",1);state.top=Math.max(1,Math.min(50,num("f_top",10)));
+  state.fee=num("a_fee",1);state.imp=num("a_imp",2);
+  var p=parseFloat($("a_pen").value);state.pen=isFinite(p)?p/100:null;
+}
+function save(){try{localStorage.setItem("copy_state",JSON.stringify(state))}catch(x){}}
+buildControls();
+document.addEventListener("input",function(e){if(e.target.tagName==="INPUT"){readInputs();sync();render();save()}});
+$("presets").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;$("size").value=b.dataset.v;readInputs();sync();render();save()});
+$("delay").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.delay=+b.dataset.v;sync();render();save()});
+$("mode").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.mode=b.dataset.v;sync();render();save()});
+try{var sv=JSON.parse(localStorage.getItem("copy_state")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
+  $("size").value=state.size;$("stop").checked=state.stop;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
+sync();render();
+
+(async function(){
+  var db=null;
+  try{db=await claude.use("db")}catch(x){}
+  if(!db){connected=false;render();return}
+  connected=true;
+  db.collection("wallets").onSnapshot(function(snap){
+    wallets=snap.docs.map(function(d){var x=Object.assign({},d.data()||{});x.addr=x.addr||d.id;return x}).filter(function(w){return w.status!=="removed"});
+    render();
+  },function(){connected=false;render()});
+  db.doc("meta/sweep").onSnapshot(function(s){meta=s.exists?s.data():null;render()},function(){});
+})();
+</script>
