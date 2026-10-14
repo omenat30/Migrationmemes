@@ -96,6 +96,7 @@ def collect(store, cfg, now):
                 continue
             r = compute_rets(ser(m), o["ts"], cfg, now, [ph])[ph]
             res.append({"mint": m, "ts": o["ts"], "mcap": o["mcap"], "score": o["features"]["score"],
+                        "features": o["features"],
                         "ret": value(r), "rug": r["rug"], "status": r["status"]})
         return sorted(res, key=lambda e: e["ts"])
 
@@ -143,6 +144,23 @@ def _summary(rets, ds, dropped, entries, cfg):
     return out
 
 
+def exploratory(cohort, a, min_n=20):
+    """Correlación de cada dato extra de GMGN (gx_*) con el retorno neto. SOLO DESCRIPTIVO:
+    son muchas pruebas sin corrección y no se usa para decidir nada. Si alguno parece útil se
+    pre-registra en HIPOTESIS_v3 y se prueba con datos nuevos."""
+    keys = sorted({k for e in cohort for k in e.get("features", {}) if k.startswith("gx_")})
+    out = []
+    for k in keys:
+        pairs = [(e["features"][k], e["ret"]) for e in cohort
+                 if e["ret"] is not None and isinstance(e["features"].get(k), (int, float))]
+        if len(pairs) < min_n:
+            continue
+        rho, p = stats.spearman_perm_p([x for x, _ in pairs], [y for _, y in pairs], n=1000, seed=a["seed"])
+        if rho is not None:
+            out.append({"feature": k[3:], "n": len(pairs), "spearman": rho, "p": p})
+    return sorted(out, key=lambda r: -abs(r["spearman"]))
+
+
 def build_report(store, cfg, now):
     a = cfg["analysis"]
     band = 0.25
@@ -181,6 +199,7 @@ def build_report(store, cfg, now):
     ys = [e["ret"] for e in cohort if e["ret"] is not None]
     rho, p_rho = stats.spearman_perm_p(xs, ys, seed=a["seed"])
     rep["score_vs_return"] = {"n": len(xs), "spearman": rho, "p": p_rho}
+    rep["exploratory"] = exploratory(cohort, a)
     t = rep["test"]
     if len(ds) < a["min_n_test"]:
         rep["verdict"] = "SIN DATOS SUFICIENTES"

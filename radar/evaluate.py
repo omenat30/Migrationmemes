@@ -99,11 +99,12 @@ def select_wallets(trades, holders, cfg):
     return out
 
 
-def evaluate_token(coin, trades, holders, mint_info, creator_coins, wallet_data, cfg, now, excluded=0.0):
+def evaluate_token(coin, trades, holders, mint_info, creator_coins, wallet_data, cfg, now, excluded=0.0, extras=None):
     """coin: normalizado. trades: lista normalizada. holders: [{owner, amount}] sin curva/pool
     ordenados de mayor a menor. mint_info: {mint_authority, freeze_authority, supply} o None.
     wallet_data: {wallet: {"parsed": ..., "summary": ...}}. excluded: tokens en la curva y el pool.
     Circulante = suministro - excluded (nunca menos que la suma de holders conocidos).
+    extras: datos adicionales de GMGN que SE REGISTRAN pero NO puntúan (ver HIPOTESIS_v2.md).
     Devuelve el resultado completo."""
     mcap = coin.get("mcap_usd") or 0.0
     progress = curve_progress(coin, cfg)
@@ -186,7 +187,7 @@ def evaluate_token(coin, trades, holders, mint_info, creator_coins, wallet_data,
         "price": coin.get("price_usd"), "raw_score": round(raw, 1),
         "score": 0.0 if discarded else round(raw, 1), "discarded": discarded, "reasons": reasons,
         "criteria": {k: {"label": LABELS[k], "weight": wts[k], **crit[k]} for k in wts},
-        "security": sec, "links": links[:20],
+        "security": sec, "links": links[:20], "extras": extras or {},
         "features": {
             "progress": round(progress, 2), "mcap": mcap, "score": 0.0 if discarded else round(raw, 1),
             "unique_buyers": crit["volume"]["metrics"]["unique_buyers"],
@@ -197,5 +198,6 @@ def evaluate_token(coin, trades, holders, mint_info, creator_coins, wallet_data,
             "prev_rugs": prev_rugs, "sec_ok": sec["ok"], "discarded": discarded,
             "slip_buy_pct": slip, "vsol": coin.get("virtual_sol"), "vtok": coin.get("virtual_tokens"),
             "sol_usd": coin.get("sol_usd"),
+            **{f"gx_{k}": v for k, v in (extras or {}).items() if isinstance(v, (int, float)) and not isinstance(v, bool)},
         },
     }

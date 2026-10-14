@@ -41,7 +41,7 @@ def cmd_demo(cfg, a):
         os.remove(path)
     st = _store(cfg, path)
     now = int(time.time())
-    populate(st, cfg, random.Random(11), now)
+    populate(st, cfg, random.Random(12), now)
     rep = analysis.build_report(st, cfg, now)
     st.set_meta("report", rep)
     print("DATOS SINTÉTICOS. Veredicto del análisis sobre datos al azar:", rep["verdict"])
@@ -104,8 +104,38 @@ def cmd_check(cfg, a):
             _row("pump.fun monedas del creador", True, f"{len(cc)} monedas; con ath_mcap: {sum(1 for x in cc if x['ath_mcap'])}")
         except Exception as e:
             _row("pump.fun monedas del creador", False, redact(e))
+    from .sources.gmgn import Gmgn, GmgnError, GmgnRateLimited
+    gm = Gmgn(cfg)
+    if not gm.available:
+        print("[ -- ] GMGN sin clave (GMGN_API_KEY en .env): se usará Helius")
+    elif coins:
+        c = coins[0]
+        try:
+            sec = gm.security(c["mint"])
+            miss = [k for k in ("renounced_mint", "renounced_freeze", "top10_rate", "rug_ratio") if sec.get(k) is None]
+            _row("GMGN seguridad", not miss, f"campos que faltan: {miss or 'ninguno'}")
+            inf = gm.info(c["mint"])
+            miss = [k for k in ("progress", "total_supply", "smart_wallets", "creator") if inf.get(k) is None]
+            _row("GMGN info", not miss, f"progreso {inf.get('progress')}; campos que faltan: {miss or 'ninguno'}")
+            hl = gm.holders(c["mint"])
+            ex = [h for h in hl if h["excluded"]]
+            with_f = [h for h in hl if h["funder"]]
+            _row("GMGN holders", bool(hl), f"{len(hl)} holders ({len(ex)} curva/pool), {len(with_f)} con fondeador conocido")
+            if hl:
+                rows = gm.activity(next(h["owner"] for h in hl if not h["excluded"]))
+                from . import wallet_history as wh
+                p = wh.parse_gmgn_activity("x", rows)
+                _row("GMGN actividad de wallet", p["n_trades"] > 0, f"{len(rows)} filas, {p['n_trades']} operaciones reconocidas (0 → formato distinto)")
+            cr = c.get("creator")
+            if cr:
+                cc = gm.created_tokens(cr)
+                _row("GMGN monedas del creador", True, f"{len(cc)} monedas; con ath: {sum(1 for x in cc if x['ath_mcap'])}")
+        except GmgnRateLimited as e:
+            _row("GMGN", False, f"límite de uso: {e}")
+        except GmgnError as e:
+            _row("GMGN", False, str(e))
     if not hel.available:
-        _row("Helius", False, "falta HELIUS_API_KEY")
+        print("[ -- ] Helius sin clave: opcional si GMGN funciona (se usa solo para contrastar mint/freeze)")
     elif coins:
         c = coins[0]
         try:

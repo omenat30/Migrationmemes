@@ -11,7 +11,7 @@ DEFAULTS = {
     "total_supply": 1_000_000_000,
     "poll_seconds": 20,
     "deep_cache_seconds": 120,
-    "max_deep_per_cycle": 6,
+    "max_deep_per_cycle": 4,
     "track_score": 55,
     "alert_variant": "V00",
     "gates": {"min_mcap_usd": 30000, "min_curve_pct": 60, "max_curve_pct": 99.5},
@@ -42,6 +42,9 @@ DEFAULTS = {
         "helius_api": "https://api.helius.xyz",
     },
     "helius_rps": 5,
+    # GMGN (solo lectura). Rate/capacity = plan gratuito 5/5 con pesos por ruta (ver sources/gmgn.py).
+    "gmgn": {"enabled": True, "rate": 5, "capacity": 5, "holders_limit": 100, "activity_limit": 50,
+             "history_wallets": 14},
     "email": {"enabled": False, "to": "albertomenat@gmail.com",
               "smtp_host": "smtp.gmail.com", "smtp_port": 465},
     "server": {"host": "127.0.0.1", "port": 8787},
@@ -83,6 +86,7 @@ def load_config(path="config.json"):
     cfg["alert_score"] = av["min_score"]
     cfg["keys"] = {
         "helius": os.environ.get("HELIUS_API_KEY", ""),
+        "gmgn": os.environ.get("GMGN_API_KEY", "") if cfg["gmgn"]["enabled"] else "",
         "smtp_user": os.environ.get("SMTP_USER", ""),
         "smtp_password": os.environ.get("SMTP_PASSWORD", ""),
     }

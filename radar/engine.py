@@ -5,6 +5,7 @@ import time
 from . import alerts as alerts_mod
 from . import evaluate, wallet_history
 from .sources.dexscreener import DexScreener
+from .sources.gmgn import Gmgn, GmgnError, GmgnRateLimited
 from .sources.helius import Helius
 from .sources.pumpfun import PumpFun
 from .util import RateLimiter, redact
@@ -12,11 +13,12 @@ from .variants import load_variants, passes
 
 
 class Engine:
-    def __init__(self, cfg, store, pump=None, helius=None, dex=None, log=print, rng=None):
+    def __init__(self, cfg, store, pump=None, helius=None, dex=None, log=print, rng=None, gmgn=None):
         self.cfg, self.store, self.log = cfg, store, log
         self.pump = pump or PumpFun(cfg, RateLimiter(8))
         self.helius = helius or Helius(cfg, RateLimiter(cfg["helius_rps"]))
         self.dex = dex or DexScreener(cfg, RateLimiter(4))
+        self.gmgn = gmgn or Gmgn(cfg)
         self.rng = rng or random.Random()
         variants = {v["id"]: v for v in load_variants()}
         self.alert_variant = variants[cfg["alert_variant"]]
@@ -63,9 +65,82 @@ class Engine:
 
     # ---------- análisis profundo de un token
     def deep(self, coin, now):
-        """Descarga todo lo necesario y puntúa. Devuelve None si faltan datos esenciales."""
+        """Descarga todo lo necesario y puntúa. GMGN si hay clave (1 llamada de holders trae
+        también el fondeador de cada wallet); si no, Helius. Los trades siempre vienen de pump.fun."""
+        trades = self.pump.trades(coin["mint"])
+        if self.gmgn.available:
+            return self.deep_gmgn(coin, trades, now)
+        if self.helius.available:
+            return self.deep_helius(coin, trades, now)
+        return None
+
+    def deep_gmgn(self, coin, trades, now):
+        cfg, mint = self.cfg, coin["mint"]
+        sec = self.gmgn.security(mint)
+        info = self.gmgn.info(mint)
+        hl = self.gmgn.holders(mint)
+        supply = info.get("total_supply") or cfg["total_supply"]
+        holders = sorted(({"owner": h["owner"], "amount": h["pct"] * supply} for h in hl
+                          if not h["excluded"] and h["pct"] > 0), key=lambda h: -h["amount"])
+        excluded = sum(h["pct"] for h in hl if h["excluded"]) * supply
+        if sec["renounced_mint"] is None or sec["renounced_freeze"] is None:
+            minfo = None  # sin dato no se asume renunciado: la seguridad lo trata como no verificable
+        else:
+            minfo = {"mint_authority": None if sec["renounced_mint"] else "no renunciada (GMGN)",
+                     "freeze_authority": None if sec["renounced_freeze"] else "no renunciada (GMGN)",
+                     "supply": supply}
+        if self.helius.available:  # contraste on-chain: si Helius ve una autoridad, manda Helius
+            try:
+                hm = self.helius.mint_info(mint)
+                if hm and (hm["mint_authority"] or hm["freeze_authority"]):
+                    minfo = hm
+            except Exception as e:
+                self.err(f"Helius mint {coin.get('symbol')}: {e}")
+        creator = coin.get("creator") or info.get("creator")
+        try:
+            ccoins = self.gmgn.created_tokens(creator) if creator else None
+        except GmgnRateLimited:
+            raise
+        except GmgnError as e:
+            self.err(f"GMGN monedas del creador {coin.get('symbol')}: {e}")
+            ccoins = None
+        wallets = evaluate.select_wallets(trades, holders, cfg)
+        hmap = {h["owner"]: h for h in hl}
+        sol = coin.get("sol_usd") or 150.0
+        budget, wd = cfg["gmgn"]["history_wallets"], {}
+        for w in wallets:
+            cached = self.store.get_wallet("g:" + w, cfg["wallets"]["wallet_cache_s"], now)
+            if cached is None:
+                h = hmap.get(w)
+                funder = h["funder"] if h and not h["funder_label"] else None  # un fondeador con nombre es un exchange o protocolo
+                fts = h["funder_ts"] if h else None
+                if budget > 0:
+                    try:
+                        parsed = wallet_history.parse_gmgn_activity(w, self.gmgn.activity(w), funder, fts, sol)
+                        budget -= 1
+                        cached = {"parsed": parsed, "summary": wallet_history.summarize(parsed, cfg)}
+                        self.store.put_wallet("g:" + w, cached, now)
+                    except GmgnRateLimited:
+                        raise
+                    except GmgnError as e:
+                        self.err(f"GMGN wallet {w[:6]}…: {e}")
+                if cached is None:  # sin historial este ciclo: solo el fondeador, sin guardar en caché
+                    parsed = wallet_history.parse_gmgn_activity(w, [], funder, fts, sol)
+                    cached = {"parsed": parsed, "summary": wallet_history.summarize(parsed, cfg)}
+            wd[w] = cached
+        tags = lambda t: sum(1 for h in hl if t in h["tags"] or t in h["maker_tags"])
+        extras = {"data_source": "gmgn", "smart_wallets": info["smart_wallets"], "renowned_wallets": info["renowned_wallets"],
+                  "sniper_wallets": info["sniper_wallets"], "bundler_wallets": info["bundler_wallets"],
+                  "rat_trader_wallets": info["rat_trader_wallets"], "bot_degen_rate": info["bot_degen_rate"],
+                  "fresh_wallet_rate": info["fresh_wallet_rate"], "rug_ratio": sec["rug_ratio"],
+                  "bundler_rate": sec["bundler_rate"], "rat_rate": sec["rat_rate"],
+                  "insider_hold_rate": sec["insider_hold_rate"], "top10_rate_gmgn": sec["top10_rate"],
+                  "smart_in_holders": tags("smart_degen"), "bundler_in_holders": tags("bundler"),
+                  "creator_status": sec["creator_status"], "burn_status": sec["burn_status"]}
+        return evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, cfg, now, excluded, extras)
+
+    def deep_helius(self, coin, trades, now):
         mint = coin["mint"]
-        trades = self.pump.trades(mint)
         exclude = {x for x in (coin.get("bonding_curve"), coin.get("pool")) if x}
         holders, excluded = self.helius.holders(mint, exclude)
         minfo = self.helius.mint_info(mint)
@@ -88,14 +163,15 @@ class Engine:
                     self.err(f"wallet {w[:6]}…: {e}")
                     continue
             wd[w] = cached
-        return evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, self.cfg, now, excluded)
+        return evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, self.cfg, now, excluded,
+                                       {"data_source": "helius"})
 
     # ---------- un ciclo
     def cycle(self, now=None):
         now = int(now or time.time())
         cfg, st = self.cfg, self.store
-        if not self.helius.available:
-            self.err("falta HELIUS_API_KEY: sin ella no se puede analizar holders ni wallets")
+        if not (self.gmgn.available or self.helius.available):
+            self.err("sin fuente de holders: falta GMGN_API_KEY o HELIUS_API_KEY (o GMGN está en pausa por límite de uso)")
             return
         sol = self.sol_usd(now)
         try:
@@ -115,6 +191,10 @@ class Engine:
         for c in due[: cfg["max_deep_per_cycle"]]:
             try:
                 res = self.deep(c, now)
+            except GmgnRateLimited as e:
+                self.err(f"GMGN límite de uso, pausa hasta {e.reset_at and time.strftime('%H:%M:%S', time.localtime(e.reset_at))}: {e}")
+                self.store.set_meta("gmgn_blocked_until", e.reset_at)
+                break
             except Exception as e:
                 self.err(f"análisis {c.get('symbol')}: {e}")
                 continue

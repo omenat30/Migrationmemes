@@ -4,7 +4,7 @@ import time
 from . import analysis
 
 KEEP = ("mint", "name", "symbol", "ts", "progress", "mcap", "price", "score", "raw_score", "discarded",
-        "reasons", "criteria", "security", "features")
+        "reasons", "criteria", "security", "features", "extras")
 
 
 def build_state(store, cfg, now=None, mode="live"):
@@ -30,7 +30,8 @@ def build_state(store, cfg, now=None, mode="live"):
                    "gates": cfg["gates"], "curve_target_sol": cfg["curve_target_sol"],
                    "position_sol": cfg["costs"]["position_sol"], "weights": cfg["weights"]},
         "health": {"last_cycle": last, "errors": store.get_meta("errors", [])[-5:],
-                   "sample_fails": store.get_meta("sample_fails"), "helius": bool(cfg["keys"]["helius"]),
+                   "sample_fails": store.get_meta("sample_fails"), "helius": bool(cfg["keys"]["helius"]), "gmgn": bool(cfg["keys"].get("gmgn")),
+                   "gmgn_blocked_until": store.get_meta("gmgn_blocked_until"),
                    "email": bool(cfg["email"]["enabled"]), "sol_usd": (store.get_meta("sol_usd") or {}).get("v"),
                    "n_candidates_tracked": store.count_tracked("candidate"),
                    "n_controls_tracked": store.count_tracked("control")},

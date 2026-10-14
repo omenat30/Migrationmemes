@@ -14,7 +14,7 @@ if os.path.exists(path):
     os.remove(path)
 st = Store(path)
 now = int(time.time())
-demo.populate(st, cfg, random.Random(11), now)
+demo.populate(st, cfg, random.Random(12), now)
 st.set_meta("report", analysis.build_report(st, cfg, now))
 state = build_state(st, cfg, now, mode="demo")
 for c in state["candidates"]:

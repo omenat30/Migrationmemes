@@ -124,3 +124,38 @@ def summarize(parsed, cfg):
         "median_hold_s": med_hold, "quick_exit_ratio": quick_ratio, "open_unsold": open_unsold,
         "bot": bot, "quality": quality, "reason": reason,
     }
+
+
+def parse_gmgn_activity(wallet, rows, funder=None, funder_ts=None, usd_per_sol=150.0):
+    """Mismo resultado que parse_wallet_txs, a partir de /v1/user/wallet_activity de GMGN.
+    Los importes llegan en USD; se pasan a SOL con `usd_per_sol` para que `summarize` sea igual.
+    Las transferencias (transferIn/Out) NO son operaciones: se ignoran. Formato SIN VERIFICAR."""
+    positions, ts_all, n_trades = {}, [], 0
+    for r in rows or []:
+        kind = r.get("event_type") or r.get("type")
+        ts = r.get("timestamp") or 0
+        ts_all.append(ts)
+        if kind not in ("buy", "sell"):
+            continue
+        mint = (r.get("token") or {}).get("address")
+        try:
+            usd, tok = float(r.get("cost_usd") or 0), float(r.get("token_amount") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not mint:
+            continue
+        n_trades += 1
+        p = positions.setdefault(mint, {"buy_sol": 0.0, "buy_tok": 0.0, "sell_sol": 0.0, "sell_tok": 0.0,
+                                        "first_buy": None, "first_sell": None, "last_sell": None})
+        if kind == "buy":
+            p["buy_sol"] += usd / usd_per_sol
+            p["buy_tok"] += tok
+            p["first_buy"] = ts if p["first_buy"] is None else min(p["first_buy"], ts)
+        else:
+            p["sell_sol"] += usd / usd_per_sol
+            p["sell_tok"] += tok
+            p["first_sell"] = ts if p["first_sell"] is None else min(p["first_sell"], ts)
+            p["last_sell"] = ts if p["last_sell"] is None else max(p["last_sell"], ts)
+    span = (max(ts_all) - min(ts_all)) if len(ts_all) > 1 else 0
+    return {"wallet": wallet, "positions": positions, "funder": funder, "funded_ts": funder_ts,
+            "counterparties": [], "n_trades": n_trades, "n_txs": len(rows or []), "span_s": span}

@@ -73,7 +73,9 @@ def synth_inputs(rng, kind, cfg, now, progress=0.88):
 def evaluate_synth(rng, kind, cfg, now, progress=0.88):
     coin, trades, holders, minfo, ccoins, wd = synth_inputs(rng, kind, cfg, now, progress)
     excluded = 1e9 - 793.1e6 * progress  # lo que aún queda en la curva
-    return coin, evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, cfg, now, excluded)
+    extras = {"data_source": "demo (sintético)", "smart_wallets": rng.randint(0, 6), "rug_ratio": round(rng.random() * 0.4, 2),
+              "bundler_rate": round(rng.random() * 0.3, 2), "creator_status": "creator_close"}
+    return coin, evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, cfg, now, excluded, extras)
 
 
 def _path(rng, p0, n_fast, n_slow):
@@ -118,7 +120,9 @@ def populate(store, cfg, rng, now, n_cand=45, n_ctrl=90):
                  "largest_cluster_pct": rng.uniform(3, 30), "quality_share": rng.uniform(0, 0.8),
                  "coverage": 0.8, "wash_share": 0.05, "top10_pct": 28.0, "creator_pct": 2.0,
                  "prev_rugs": 0, "sec_ok": True, "discarded": False, "slip_buy_pct": 3.0,
-                 "vsol": 100.0, "vtok": 100 * SOL_USD / p0, "sol_usd": SOL_USD}
+                 "vsol": 100.0, "vtok": 100 * SOL_USD / p0, "sol_usd": SOL_USD,
+                 "gx_smart_wallets": rng.randint(0, 6), "gx_rug_ratio": rng.random() * 0.4,
+                 "gx_bundler_rate": rng.random() * 0.3, "gx_insider_hold_rate": rng.random() * 0.2}
             store.db.execute(
                 "INSERT INTO observations(mint,ts,price,mcap,progress,score,discarded,features) VALUES(?,?,?,?,?,?,?,?)",
                 (mint, t0, p0, mcap, f["progress"], f["score"], 0, json.dumps(f)))
