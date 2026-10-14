@@ -24,23 +24,35 @@ def _first_at_or_after(series, t, tol):
 
 
 def compute_rets(series, t_obs, cfg, now, horizons=None):
-    """Retornos netos desde una observación en t_obs. Devuelve {h: {ret, rug, status}}."""
+    """Retornos netos de la operación de 100 USD desde una observación en t_obs, con tu stop del -60 %.
+    Si antes del horizonte el precio toca el suelo (entrada x 0,4) se cierra: no al instante sino tras
+    `stop_reaction_s` (cierre manual), al precio que haya entonces, que en un desplome puede ser peor que -60 %.
+    Devuelve {h: {ret, rug, status, stopped}}."""
     horizons = horizons or cfg["analysis"]["horizons_s"]
-    lat = cfg["costs"]["latency_s"]
+    c = cfg["costs"]
+    lat = c["latency_s"]
     out = {}
     entry = _first_at_or_after(series, t_obs + lat, 150)
     if entry is None:
         st = "pendiente" if now < t_obs + lat + 150 else "sin_entrada"
-        return {h: {"ret": None, "rug": None, "status": st} for h in horizons}
+        return {h: {"ret": None, "rug": None, "status": st, "stopped": False} for h in horizons}
+    floor = entry["price"] * (1 - c["stop_loss_pct"] / 100)
+    after = [s for s in series if s["ts"] > entry["ts"]]
     for h in horizons:
         tol = max(150, 0.05 * h)
         due = entry["ts"] + h
+        hit = next((s for s in after if s["ts"] <= due and s["price"] <= floor), None)
+        if hit is not None:
+            ex = next((s for s in after if s["ts"] >= hit["ts"] + c["stop_reaction_s"]), hit)
+            r, rug = costs.net_return(entry, ex, cfg)
+            out[h] = {"ret": r, "rug": rug, "status": "ok", "stopped": True}
+            continue
         ex = _first_at_or_after(series, due, tol)
         if ex is None:
-            out[h] = {"ret": None, "rug": None, "status": "pendiente" if now < due + tol else "falta"}
+            out[h] = {"ret": None, "rug": None, "status": "pendiente" if now < due + tol else "falta", "stopped": False}
         else:
             r, rug = costs.net_return(entry, ex, cfg)
-            out[h] = {"ret": r, "rug": rug, "status": "ok"}
+            out[h] = {"ret": r, "rug": rug, "status": "ok", "stopped": False}
     return out
 
 
@@ -58,7 +70,7 @@ def alert_outcomes(store, cfg, now):
     for a in store.alerts():
         ser = store.series(a["mint"])
         r = compute_rets(ser, a["ts"], cfg, now)
-        out[a["mint"]] = {HNAME[h]: {"ret": v["ret"], "rug": v["rug"], "status": v["status"]} for h, v in r.items()}
+        out[a["mint"]] = {HNAME[h]: {"ret": v["ret"], "rug": v["rug"], "status": v["status"], "stopped": v["stopped"]} for h, v in r.items()}
     return out
 
 

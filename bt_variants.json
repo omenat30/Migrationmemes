@@ -1,0 +1,17 @@
+{
+  "_nota": "Lista CERRADA de 12 variantes del backtest, fijada ANTES de ver ningún dato grabado. No se añaden ni se cambian. entry = % de curva al que se compra (primera muestra con capitalización >= min_mcap). exit: 'migrate' = vender tras migrar; 'target30' = vender si sube +30 % (si no, hasta migrar o 2 h); 'time30' = vender a los 30 min. Filtros: top10 = concentración de holders; creator = rugs previos del creador; flow = compradores únicos y wash.",
+  "variants": [
+    {"id": "B01", "desc": "Entrar al 90 %, vender al migrar", "entry": 90, "exit": "migrate"},
+    {"id": "B02", "desc": "Entrar al 93 %, vender al migrar (base)", "entry": 93, "exit": "migrate"},
+    {"id": "B03", "desc": "Entrar al 96 %, vender al migrar", "entry": 96, "exit": "migrate"},
+    {"id": "B04", "desc": "93 %, objetivo +30 %", "entry": 93, "exit": "target30"},
+    {"id": "B05", "desc": "93 %, vender a los 30 min", "entry": 93, "exit": "time30"},
+    {"id": "B06", "desc": "93 %, migrar, top10 < 35 %", "entry": 93, "exit": "migrate", "top10_max": 35},
+    {"id": "B07", "desc": "93 %, migrar, creador sin rugs previos", "entry": 93, "exit": "migrate", "creator_rugs_max": 0},
+    {"id": "B08", "desc": "93 %, migrar, 15+ compradores y wash < 25 %", "entry": 93, "exit": "migrate", "buyers5_min": 15, "wash_max": 0.25},
+    {"id": "B09", "desc": "93 %, migrar, los tres filtros", "entry": 93, "exit": "migrate", "top10_max": 35, "creator_rugs_max": 0, "buyers5_min": 15, "wash_max": 0.25},
+    {"id": "B10", "desc": "90 %, migrar, los tres filtros", "entry": 90, "exit": "migrate", "top10_max": 35, "creator_rugs_max": 0, "buyers5_min": 15, "wash_max": 0.25},
+    {"id": "B11", "desc": "96 %, migrar, los tres filtros", "entry": 96, "exit": "migrate", "top10_max": 35, "creator_rugs_max": 0, "buyers5_min": 15, "wash_max": 0.25},
+    {"id": "B12", "desc": "93 %, objetivo +30 %, los tres filtros", "entry": 93, "exit": "target30", "top10_max": 35, "creator_rugs_max": 0, "buyers5_min": 15, "wash_max": 0.25}
+  ]
+}

@@ -27,6 +27,7 @@ def normalize_coin(raw, total_supply=1_000_000_000, sol_usd=None):
         mcap = float(raw["market_cap"]) * sol_usd
     mcap = float(mcap or 0)
     ath = raw.get("ath_market_cap")
+    vs_, rs_ = _sol(raw.get("virtual_sol_reserves")), _sol(raw.get("real_sol_reserves"))
     return {
         "mint": raw.get("mint"),
         "name": sanitize_text(raw.get("name")),
@@ -42,6 +43,10 @@ def normalize_coin(raw, total_supply=1_000_000_000, sol_usd=None):
         "virtual_sol": _sol(raw.get("virtual_sol_reserves")) or None,
         "virtual_tokens": _tok(raw.get("virtual_token_reserves")) or None,
         "complete": bool(raw.get("complete")),
+        # VERIFICADO: la mitad de los tokens no cotiza en SOL (quote_decimals 6 u 8; sus «reservas de SOL» son de otra
+        # moneda). Una curva estándar en SOL tiene 9 decimales y reservas virtuales = reales + 30.
+        "quote_decimals": raw.get("quote_decimals"),
+        "sol_quote": raw.get("quote_decimals") == 9 and abs(vs_ - rs_ - 30.0) < 0.01,
         "created_ts": _ts(raw.get("created_timestamp")),
         "ath_mcap": float(ath) if ath else None,
         "sol_usd": sol_usd,
@@ -67,8 +72,10 @@ class PumpFun:
     def _get(self, path):
         return http_json(self.base + path, limiter=self.limiter)
 
-    def list_live(self, sol_usd=None):
-        raw = self._get(self.cfg["endpoints"]["pumpfun_list_path"])
+    def list_live(self, sol_usd=None, offset=0):
+        """Tokens más recientemente operados. `offset` pagina de 50 en 50 (el máximo útil ronda 1.000)."""
+        path = self.cfg["endpoints"]["pumpfun_list_path"].replace("offset=0", f"offset={int(offset)}")
+        raw = self._get(path)
         raw = raw if isinstance(raw, list) else raw.get("coins", [])
         return [normalize_coin(r, self.supply, sol_usd) for r in raw if r.get("mint")]
 

@@ -11,7 +11,7 @@ CREATE INDEX IF NOT EXISTS ix_obs_mint ON observations(mint, ts);
 CREATE TABLE IF NOT EXISTS latest(mint TEXT PRIMARY KEY, ts INTEGER, name TEXT, symbol TEXT, result TEXT);
 CREATE TABLE IF NOT EXISTS tracked(
   mint TEXT PRIMARY KEY, kind TEXT, start_ts INTEGER, until_ts INTEGER, next_ts INTEGER,
-  mcap0 REAL, name TEXT, symbol TEXT);
+  mcap0 REAL, name TEXT, symbol TEXT, curve TEXT);
 CREATE TABLE IF NOT EXISTS series(
   mint TEXT, ts INTEGER, price REAL, mcap REAL, vsol REAL, vtok REAL, liq REAL, complete INTEGER, sol_usd REAL,
   PRIMARY KEY(mint, ts));
@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS alerts(
 CREATE TABLE IF NOT EXISTS trades(
   sig TEXT PRIMARY KEY, mint TEXT, ts INTEGER, wallet TEXT, is_buy INTEGER, sol REAL, tokens REAL, slot INTEGER);
 CREATE INDEX IF NOT EXISTS ix_trades_mint ON trades(mint, ts);
+CREATE TABLE IF NOT EXISTS rec_tokens(
+  mint TEXT PRIMARY KEY, curve TEXT, creator TEXT, name TEXT, symbol TEXT, created_ts INTEGER, first_ts INTEGER,
+  first_progress REAL, last_ts INTEGER, completed_ts INTEGER, feat TEXT, feat_ts INTEGER);
+CREATE TABLE IF NOT EXISTS rec_path(
+  mint TEXT, ts INTEGER, progress REAL, price REAL, mcap REAL, vsol REAL, vtok REAL, liq REAL, phase TEXT, sol_usd REAL,
+  PRIMARY KEY(mint, ts));
 CREATE TABLE IF NOT EXISTS wallet_cache(addr TEXT PRIMARY KEY, ts INTEGER, data TEXT);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
@@ -28,13 +34,27 @@ CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 
 class Store:
     def __init__(self, path):
+        self.path = path
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
-        self.db = sqlite3.connect(path, check_same_thread=False)
+        self.db = sqlite3.connect(path, check_same_thread=False, timeout=15)
         self.db.row_factory = sqlite3.Row
+        if path != ":memory:":
+            self.db.execute("PRAGMA journal_mode=WAL")  # el hilo de muestreo y el de análisis escriben a la vez
+            self.db.execute("PRAGMA busy_timeout=15000")
         self.db.executescript(SCHEMA)
+        try:  # bases creadas antes de añadir la columna
+            self.db.execute("ALTER TABLE tracked ADD COLUMN curve TEXT")
+        except sqlite3.OperationalError:
+            pass
         self.db.commit()
+
+    def clone(self):
+        """Otra conexión a la misma base (un hilo, una conexión). No válido para :memory:."""
+        if self.path == ":memory:":
+            raise ValueError("una base en memoria no se puede compartir entre hilos")
+        return Store(self.path)
 
     def close(self):
         self.db.close()
@@ -81,9 +101,9 @@ class Store:
     def get_tracked(self, mint):
         return self.db.execute("SELECT * FROM tracked WHERE mint=?", (mint,)).fetchone()
 
-    def track(self, mint, kind, now, until, mcap0, name, symbol):
-        self.db.execute("INSERT OR IGNORE INTO tracked VALUES(?,?,?,?,?,?,?,?)",
-                        (mint, kind, now, until, now, mcap0, name, symbol))
+    def track(self, mint, kind, now, until, mcap0, name, symbol, curve=None):
+        self.db.execute("INSERT OR IGNORE INTO tracked(mint,kind,start_ts,until_ts,next_ts,mcap0,name,symbol,curve) "
+                        "VALUES(?,?,?,?,?,?,?,?,?)", (mint, kind, now, until, now, mcap0, name, symbol, curve))
         self.db.commit()
 
     def extend_tracking(self, mint, until):
@@ -152,6 +172,47 @@ class Store:
 
     def set_last_trade_sig(self, mint, sig):
         self.set_meta("lastsig:" + mint, sig)
+
+    # --- grabador de histórico
+    def rec_get(self, mint):
+        return self.db.execute("SELECT * FROM rec_tokens WHERE mint=?", (mint,)).fetchone()
+
+    def rec_add(self, mint, curve, creator, name, symbol, created_ts, now, progress):
+        self.db.execute("INSERT OR IGNORE INTO rec_tokens(mint,curve,creator,name,symbol,created_ts,first_ts,first_progress,last_ts) "
+                        "VALUES(?,?,?,?,?,?,?,?,?)", (mint, curve, creator, name, symbol, created_ts, now, progress, now))
+        self.db.commit()
+
+    def rec_point(self, mint, ts, progress, price, mcap, vsol, vtok, liq, phase, sol_usd):
+        self.db.execute("INSERT OR REPLACE INTO rec_path VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (mint, int(ts), progress, price, mcap, vsol, vtok, liq, phase, sol_usd))
+        self.db.execute("UPDATE rec_tokens SET last_ts=? WHERE mint=?", (int(ts), mint))
+        self.db.commit()
+
+    def rec_complete(self, mint, ts):
+        self.db.execute("UPDATE rec_tokens SET completed_ts=COALESCE(completed_ts,?) WHERE mint=?", (int(ts), mint))
+        self.db.commit()
+
+    def rec_set_feat(self, mint, feat, ts):
+        self.db.execute("UPDATE rec_tokens SET feat=?, feat_ts=? WHERE mint=?", (json.dumps(feat), int(ts), mint))
+        self.db.commit()
+
+    def rec_active(self, now, post_s, stale_s):
+        """Tokens a seguir: en curva y vistos hace poco, o migrados dentro de la ventana posterior."""
+        rows = self.db.execute("SELECT * FROM rec_tokens").fetchall()
+        out = []
+        for r in rows:
+            if r["completed_ts"]:
+                if now - r["completed_ts"] <= post_s:
+                    out.append(r)
+            elif now - r["last_ts"] <= stale_s:
+                out.append(r)
+        return out
+
+    def rec_path_of(self, mint):
+        return [dict(r) for r in self.db.execute("SELECT * FROM rec_path WHERE mint=? ORDER BY ts", (mint,)).fetchall()]
+
+    def rec_all(self):
+        return [dict(r) for r in self.db.execute("SELECT * FROM rec_tokens ORDER BY first_ts").fetchall()]
 
     # --- caché de wallets
     def get_wallet(self, addr, max_age, now):

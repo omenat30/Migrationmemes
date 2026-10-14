@@ -1,0 +1,17 @@
+# SIN VERIFICAR (ver Dockerfile). Dos servicios sobre la misma base de datos:
+#   record = graba histórico (lo importante ahora); radar = detector + panel.
+# Pon tu HELIUS_API_KEY en el archivo .env junto a este.
+services:
+  record:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes: ["./data:/app/data"]
+    command: ["python", "-m", "radar", "record"]
+  radar:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes: ["./data:/app/data"]
+    ports: ["127.0.0.1:8787:8787"]
+    command: ["python", "-m", "radar", "run"]

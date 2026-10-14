@@ -12,6 +12,7 @@ DEFAULTS = {
     "poll_seconds": 20,
     "deep_cache_seconds": 120,
     "max_deep_per_cycle": 4,
+    "cycle_budget_s": 90,  # no empezar otro token si el ciclo ya pasó de este tiempo
     "track_score": 55,
     "alert_variant": "V00",
     "gates": {"min_mcap_usd": 30000, "min_curve_pct": 60, "max_curve_pct": 99.5},
@@ -20,7 +21,7 @@ DEFAULTS = {
     "wallets": {
         "first_buyers": 12, "top_holders": 12, "target_independent": 8,
         "max_cluster_pct": 25, "funding_window_s": 3600, "same_slot_min_repeats": 2,
-        "min_fund_sol": 0.02, "ignore_funders": [], "wallet_cache_s": 21600,
+        "min_fund_sol": 0.02, "ignore_funders": [], "wallet_cache_s": 21600, "parallel": 5,
     },
     "history": {"min_closed": 3, "min_hold_s": 300, "quick_exit_s": 120,
                 "max_quick_exit_ratio": 0.3, "bot_trades_per_day": 300},
@@ -28,8 +29,15 @@ DEFAULTS = {
                      "max_wash_share": 0.25, "max_creator_pct": 10, "max_cluster_pct": 35},
     "security": {"max_top10_pct": 35, "max_prev_rugs": 1, "rug_ath_min_usd": 15000,
                  "rug_drop_pct": 90, "unknown_is_fail": True, "min_sells_for_sellable": 3},
-    "costs": {"position_sol": 1.0, "latency_s": 30, "fee_pct": 1.0, "priority_fee_sol": 0.002,
-              "exit_slippage_pct": 3.0, "rug_drop_pct": 90, "rug_liquidity_usd": 2000},
+    # Tu operación: 100 USD por trade y cierre manual si cae un 60 % desde tu entrada.
+    "costs": {"position_usd": 100.0, "stop_loss_pct": 60.0, "stop_reaction_s": 30, "latency_s": 30, "fee_pct": 1.0, "amm_fee_pct": 0.30,  # comisión en el pool tras migrar: SIN VERIFICAR
+              
+              "priority_fee_sol": 0.002, "exit_slippage_pct": 3.0, "rug_drop_pct": 90, "rug_liquidity_usd": 2000},
+    "recorder": {"poll_s": 15, "pages": 6, "min_progress": 75, "feat_progress": 90, "post_s": 7200, "stale_s": 1800,
+                 "chain_checks_per_step": 20, "dex_every_s": 30},
+    # Backtest (reglas fijadas antes de ver datos; ver HIPOTESIS_v4.md)
+    "backtest": {"min_mcap_usd": 30000, "max_hold_s": 7200, "exit_delay_s": 60, "target_pct": 30, "time30_s": 1800,
+                 "min_n_select": 15, "min_n_test": 30, "ci_seed": 7, "boot": 2000, "latency_grid_s": [30, 60, 120, 300]},
     "series": {"fast_every_s": 60, "fast_until_s": 7200, "slow_every_s": 900, "tail_s": 90000},
     "control_per_hour": 12,
     "analysis": {"primary_horizon_s": 3600, "horizons_s": [300, 3600, 86400],

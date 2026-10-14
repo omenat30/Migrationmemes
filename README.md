@@ -6,6 +6,31 @@ criterios y mide después, sin dinero, si los avisos sirven de algo frente al az
 > **Nada de este programa compra ni vende.** Solo detecta, puntúa, avisa y mide. No pide claves privadas ni frases
 > semilla y no tiene ninguna función que firme transacciones.
 
+## Tu operación y el histórico (lo más importante ahora)
+
+Tu operación: **100 USD por trade, cierre si cae un 60 % desde tu entrada**. El objetivo es saber si, con esa regla y
+con costes reales, el radar gana dinero. Eso **solo lo puede decir un histórico**, y no existe uno largo: el listado de
+pump.fun solo alcanza ~1.000 tokens recientes y no hay velas. Así que el histórico se **graba**:
+
+```
+python -m radar record      # grabador: déjalo corriendo días (graba precio, migración y características)
+python -m radar backtest    # simula tu operación sobre lo grabado y da veredicto
+```
+
+- El grabador toma el precio cada 15 s de cada token con ≥ 75 % de curva (del propio listado, sin coste extra),
+  anota el instante exacto de la migración y el precio y la liquidez después, y al cruzar el 90 % guarda
+  características baratas (concentración de holders, rugs del creador, compradores y wash).
+- El backtest compra al 90/93/96 % con tu retraso, aplica tu stop del −60 % con tiempo de reacción de cierre manual,
+  comisiones y deslizamiento, y juzga con **12 variantes cerradas**, eligiendo con la primera mitad y probando en la
+  segunda. Reglas completas, escritas antes de tener datos, en `HIPOTESIS_v4.md`.
+- **No puedo prometer que sea rentable.** Si los datos dicen que pierde, el veredicto será «descartar» y se documenta.
+  Lo que sí te garantizo es que ningún resultado cuenta si no sobrevive a la segunda mitad y a los costes.
+- La idea tiene una base mecánica real: entre el 93 % y el 100 % de la curva la capitalización sube ~42 % por
+  construcción, y el stop del −60 % queda lejos. Lo que está por demostrar es cuántos completan y a qué precio entrarías tú.
+
+**Para que el grabador no se pare** necesita un ordenador siempre encendido o un servidor barato. Hay un `Dockerfile` y
+un `docker-compose.yml` (sin verificar: no se pudieron construir en la sesión de desarrollo).
+
 ## Verificado con datos reales (14 oct 2026) y lo que sigue roto
 
 Probado contra las APIs reales desde la sesión de desarrollo:
@@ -39,7 +64,7 @@ los primeros días.
    como «probable bot» cuando hacen demasiadas operaciones, pero no se puede distinguir a una persona con información
    privilegiada de una que acierta.
 4. **Esto está construido pero NO verificado contra las APIs reales.** Se desarrolló en un entorno sin acceso a
-   pump.fun, DexScreener, Helius ni GMGN. La lógica está probada con datos sintéticos (73 pruebas). Los campos de
+   pump.fun, DexScreener, Helius ni GMGN. La lógica está probada con datos sintéticos (99 pruebas). Los campos de
    GMGN se leyeron de su documentación oficial; los de pump.fun y Helius están escritos de memoria. **El primer paso es `python -m radar check`**: te dice, línea
    a línea, qué funciona y qué no. Lo que falle se arregla o se descarta; no se maquilla.
 5. **Cuatro de los filtros de seguridad son débiles o triviales en pump.fun** y el panel lo dice en cada token:
@@ -108,7 +133,7 @@ errores»). Con GMGN, Helius solo contrasta mint y freeze. Nunca pongas claves p
 ```
 python -m radar check        # prueba cada fuente y la forma de sus datos
 python -m radar calibrate    # mide cuántos SOL tenía la curva al migrar (ahora asumo 85)
-python -m unittest discover -s tests    # 73 pruebas de la lógica
+python -m unittest discover -s tests    # 99 pruebas de la lógica
 ```
 Si `calibrate` da otro valor, pon `"curve_target_sol": <valor>` en `config.json`. Si `check` falla en algo, **pásame
 la salida** y se arregla antes de seguir.
@@ -175,6 +200,8 @@ detectarla).
 |---|---|
 | `python -m radar check` | Prueba cada fuente y el formato de sus datos |
 | `python -m radar calibrate` | Mide el umbral real de migración con tokens migrados |
+| `python -m radar record` | **Grabador de histórico** (déjalo corriendo) |
+| `python -m radar backtest` | Simula tu operación (100 USD, stop −60 %) sobre lo grabado |
 | `python -m radar run` | Detector + panel en http://localhost:8787 |
 | `python -m radar serve` | Solo el panel, con la base de datos existente |
 | `python -m radar demo` | Panel con datos sintéticos |
@@ -186,7 +213,7 @@ detectarla).
 `radar/evaluate.py` puntuación · `clusters.py` entidades · `wallet_history.py` historial · `security.py` filtros ·
 `manipulation.py` wash/circular · `costs.py` costes · `analysis.py` + `stats.py` medición · `engine.py` bucle ·
 `alerts.py` avisos y correo · `sources/` pump.fun, GMGN, Helius, DexScreener · `variants.json` las 12 variantes ·
-`HIPOTESIS.md`, `_v2` y `_v3` · `tests/`.
+`recorder.py` y `backtest.py` · `bt_variants.json` · `HIPOTESIS.md`, `_v2`, `_v3` y `_v4` · `tests/`.
 
 ## Seguridad del propio programa
 

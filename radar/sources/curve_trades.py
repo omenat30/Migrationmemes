@@ -14,7 +14,7 @@ Límites conocidos: el importe es el movimiento neto de la curva (≈ SOL del us
 protocolo, hasta ~13 % por debajo del precio spot en operaciones grandes); si una transacción trae varias
 operaciones sobre la misma curva solo se cuenta la primera.
 """
-from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 
 def trades_from_enhanced(txs, mint, curve):
@@ -62,11 +62,13 @@ class CurveTrades:
         fresh = [s for s in sigs if not s.get("err") and (s.get("blockTime") or 0) >= now - self.window]
         fresh = fresh[: self.budget]  # las más recientes primero; el tope protege el presupuesto
         got, skipped = [], 0
-        for i in range(0, len(fresh), 100):
-            txs = self.h.parse_transactions([s["signature"] for s in fresh[i:i + 100]])
-            tr, sk = trades_from_enhanced(txs, mint, curve)
-            got.extend(tr)
-            skipped += sk
+        batches = [[s["signature"] for s in fresh[i:i + 100]] for i in range(0, len(fresh), 100)]
+        if batches:
+            with ThreadPoolExecutor(max_workers=min(4, len(batches))) as ex:
+                for txs in ex.map(self.h.parse_transactions, batches):
+                    tr, sk = trades_from_enhanced(txs, mint, curve)
+                    got.extend(tr)
+                    skipped += sk
         if got:
             self.store.add_trades(mint, got)
         if sigs:

@@ -1,4 +1,4 @@
-"""Línea de comandos:  python -m radar <run|serve|demo|check|calibrate|analyze|export>"""
+"""Línea de comandos:  python -m radar <run|record|backtest|serve|demo|check|calibrate|analyze|export>"""
 import argparse
 import json
 import os
@@ -44,8 +44,27 @@ def cmd_demo(cfg, a):
     populate(st, cfg, random.Random(12), now)
     rep = analysis.build_report(st, cfg, now)
     st.set_meta("report", rep)
+    from . import backtest
+    from .demo import populate_recorder
+    populate_recorder(st, cfg, random.Random(5), now - 6 * 86400)
+    st.set_meta("bt_report", backtest.run(st, cfg, now))
     print("DATOS SINTÉTICOS. Veredicto del análisis sobre datos al azar:", rep["verdict"])
     serve(st, cfg, "demo")
+
+
+def cmd_record(cfg, a):
+    """Graba histórico (precio de cada token cerca de migrar, qué pasa al migrar, características). No puntúa ni avisa."""
+    from .recorder import Recorder
+    Recorder(cfg, _store(cfg)).run_forever()
+
+
+def cmd_backtest(cfg, a):
+    """Simula tu operación (100 USD, stop -60 %) sobre el histórico grabado. Reglas en HIPOTESIS_v4.md."""
+    from . import backtest
+    st = _store(cfg)
+    rep = backtest.run(st, cfg, int(time.time()))
+    st.set_meta("bt_report", rep)
+    print(json.dumps(rep, indent=2, ensure_ascii=False, default=str))
 
 
 def cmd_analyze(cfg, a):
@@ -182,7 +201,7 @@ def main():
     ap = argparse.ArgumentParser(prog="radar")
     ap.add_argument("--config", default="config.json")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for n in ("run", "serve", "demo", "check", "calibrate", "analyze"):
+    for n in ("run", "serve", "demo", "check", "calibrate", "analyze", "record", "backtest"):
         sub.add_parser(n)
     ex = sub.add_parser("export")
     ex.add_argument("out")
@@ -190,7 +209,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

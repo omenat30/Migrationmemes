@@ -16,6 +16,9 @@ st = Store(path)
 now = int(time.time())
 demo.populate(st, cfg, random.Random(12), now)
 st.set_meta("report", analysis.build_report(st, cfg, now))
+from radar import backtest
+demo.populate_recorder(st, cfg, random.Random(5), now - 6 * 86400)
+st.set_meta("bt_report", backtest.run(st, cfg, now))
 state = build_state(st, cfg, now, mode="demo")
 for c in state["candidates"]:
     c.pop("links", None) if not c.get("links") else None

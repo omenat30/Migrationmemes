@@ -55,6 +55,15 @@ class FakeWorld:
     # --- helius (curva: firmas y transacciones con la FORMA REAL verificada de Helius)
     available = True
 
+    def curve_state(self, curve):
+        coin = next(d[0] for d in self.data.values() if d[0]["bonding_curve"] == curve)
+        return {"vsol": coin["virtual_sol"], "vtok": coin["virtual_tokens"] / self.price_factor,
+                "rsol": coin["real_sol"], "rtok": coin["real_tokens"] or 0, "supply": 1e9, "complete": False,
+                "standard": True}
+
+    def take_usage(self):
+        return {}
+
     def _all_trades(self, mint):
         return sorted(self.data[mint][1], key=lambda t: -t["ts"])
 

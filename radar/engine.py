@@ -1,11 +1,14 @@
 """Bucle de detección: lista tokens, puntúa, avisa y mide. No opera nunca."""
+import datetime
 import random
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import alerts as alerts_mod
 from . import evaluate, wallet_history
-from .sources.dexscreener import DexScreener
 from .sources.curve_trades import CurveTrades
+from .sources.dexscreener import DexScreener
 from .sources.gmgn import Gmgn, GmgnError, GmgnRateLimited
 from .sources.helius import Helius
 from .sources.pumpfun import PumpFun
@@ -46,16 +49,19 @@ class Engine:
             self.err(f"precio SOL: {e}")
         return c["v"] if c else None
 
-    def price_sample(self, mint, now):
+    def price_sample(self, mint, now, curve=None):
+        """Precio de un token. Antes de migrar se lee la cuenta de la curva EN LA CADENA (verificado contra
+        la API de pump.fun); pump.fun no ofrece consulta por dirección. Tras migrar, DexScreener."""
         sol = self.sol_usd(now)
-        c = None
-        try:
-            c = self.pump.coin(mint, sol)
-        except Exception:
-            pass
-        if c and not c["complete"] and c["price_usd"]:
-            return {"ts": now, "price": c["price_usd"], "mcap": c["mcap_usd"], "vsol": c["virtual_sol"],
-                    "vtok": c["virtual_tokens"], "liq": None, "complete": False, "sol_usd": sol}
+        if curve and self.helius.available and sol:
+            try:
+                st = self.helius.curve_state(curve)
+            except Exception:
+                st = None
+            if st and st["standard"] and not st["complete"] and st["vtok"] > 0:
+                price = st["vsol"] / st["vtok"] * sol
+                return {"ts": now, "price": price, "mcap": price * st["supply"], "vsol": st["vsol"],
+                        "vtok": st["vtok"], "liq": None, "complete": False, "sol_usd": sol}
         try:
             d = self.dex.best_pair(mint)
         except Exception:
@@ -65,10 +71,28 @@ class Engine:
                     "liq": d["liq"], "complete": True, "sol_usd": sol}
         return None
 
+    # ---------- consultas en paralelo (el cuello de botella eran las wallets, una a una)
+    def _fetch_parallel(self, items, fn):
+        """Ejecuta fn(item) en paralelo. Devuelve ({item: resultado}, primera_excepción_de_límite_o_None)."""
+        out, limit_exc = {}, None
+        if not items:
+            return out, None
+        with ThreadPoolExecutor(max_workers=max(1, self.cfg["wallets"]["parallel"])) as ex:
+            futs = {ex.submit(fn, it): it for it in items}
+            for f in as_completed(futs):
+                it = futs[f]
+                try:
+                    out[it] = f.result()
+                except GmgnRateLimited as e:
+                    limit_exc = limit_exc or e
+                except Exception as e:
+                    self.err(f"wallet {str(it)[:6]}…: {e}")
+        return out, limit_exc
+
     # ---------- análisis profundo de un token
     def deep(self, coin, now):
-        """Descarga todo lo necesario y puntúa. GMGN si hay clave (1 llamada de holders trae
-        también el fondeador de cada wallet); si no, Helius. Los trades siempre vienen de pump.fun."""
+        """Descarga todo lo necesario y puntúa. GMGN si hay clave (una llamada de holders trae el fondeador de cada
+        wallet); si no, Helius. Los trades vienen de Helius (el endpoint de pump.fun está roto)."""
         trades = self.trades_for(coin, now)
         if self.gmgn.available:
             return self.deep_gmgn(coin, trades, now)
@@ -119,27 +143,36 @@ class Engine:
         wallets = evaluate.select_wallets(trades, holders, cfg)
         hmap = {h["owner"]: h for h in hl}
         sol = coin.get("sol_usd") or 150.0
-        budget, wd = cfg["gmgn"]["history_wallets"], {}
+        wd, todo = {}, []
         for w in wallets:
             cached = self.store.get_wallet("g:" + w, cfg["wallets"]["wallet_cache_s"], now)
-            if cached is None:
-                h = hmap.get(w)
-                funder = h["funder"] if h and not h["funder_label"] else None  # un fondeador con nombre es un exchange o protocolo
-                fts = h["funder_ts"] if h else None
-                if budget > 0:
-                    try:
-                        parsed = wallet_history.parse_gmgn_activity(w, self.gmgn.activity(w), funder, fts, sol)
-                        budget -= 1
-                        cached = {"parsed": parsed, "summary": wallet_history.summarize(parsed, cfg)}
-                        self.store.put_wallet("g:" + w, cached, now)
-                    except GmgnRateLimited:
-                        raise
-                    except GmgnError as e:
-                        self.err(f"GMGN wallet {w[:6]}…: {e}")
-                if cached is None:  # sin historial este ciclo: solo el fondeador, sin guardar en caché
-                    parsed = wallet_history.parse_gmgn_activity(w, [], funder, fts, sol)
-                    cached = {"parsed": parsed, "summary": wallet_history.summarize(parsed, cfg)}
-            wd[w] = cached
+            if cached is not None:
+                wd[w] = cached
+            else:
+                todo.append(w)
+
+        def funder_of(w):
+            h = hmap.get(w)
+            # un fondeador con nombre es un exchange o protocolo: no cuenta como misma entidad
+            return (h["funder"] if h and not h["funder_label"] else None), (h["funder_ts"] if h else None)
+
+        def fetch(w):
+            f, ts = funder_of(w)
+            parsed = wallet_history.parse_gmgn_activity(w, self.gmgn.activity(w), f, ts, sol)
+            return {"parsed": parsed, "summary": wallet_history.summarize(parsed, cfg)}
+
+        budget = cfg["gmgn"]["history_wallets"]
+        got, limit_exc = self._fetch_parallel(todo[:budget], fetch)
+        for w, c in got.items():
+            self.store.put_wallet("g:" + w, c, now)
+            wd[w] = c
+        if limit_exc:
+            raise limit_exc
+        for w in todo:
+            if w not in wd:  # sin historial este ciclo: solo el fondeador, sin guardar en caché
+                f, ts = funder_of(w)
+                parsed = wallet_history.parse_gmgn_activity(w, [], f, ts, sol)
+                wd[w] = {"parsed": parsed, "summary": wallet_history.summarize(parsed, cfg)}
         tags = lambda t: sum(1 for h in hl if t in h["tags"] or t in h["maker_tags"])
         extras = {"data_source": "gmgn", "smart_wallets": info["smart_wallets"], "renowned_wallets": info["renowned_wallets"],
                   "sniper_wallets": info["sniper_wallets"], "bundler_wallets": info["bundler_wallets"],
@@ -152,7 +185,7 @@ class Engine:
         return evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, cfg, now, excluded, extras)
 
     def deep_helius(self, coin, trades, now):
-        mint = coin["mint"]
+        mint, cfg = coin["mint"], self.cfg
         exclude = {x for x in (coin.get("bonding_curve"), coin.get("pool")) if x}
         holders, excluded = self.helius.holders(mint, exclude)
         minfo = self.helius.mint_info(mint)
@@ -161,26 +194,31 @@ class Engine:
         except Exception as e:
             self.err(f"monedas del creador {coin.get('symbol')}: {e}")
             ccoins = None
-        wallets = evaluate.select_wallets(trades, holders, self.cfg)
-        wd = {}
+        wallets = evaluate.select_wallets(trades, holders, cfg)
+        wd, todo = {}, []
         for w in wallets:
-            cached = self.store.get_wallet(w, self.cfg["wallets"]["wallet_cache_s"], now)
-            if cached is None:
-                try:
-                    txs = self.helius.wallet_txs(w)
-                    parsed = wallet_history.parse_wallet_txs(w, txs, 100, self.cfg["wallets"]["min_fund_sol"])
-                    cached = {"parsed": parsed, "summary": wallet_history.summarize(parsed, self.cfg)}
-                    self.store.put_wallet(w, cached, now)
-                except Exception as e:
-                    self.err(f"wallet {w[:6]}…: {e}")
-                    continue
-            wd[w] = cached
-        return evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, self.cfg, now, excluded,
+            cached = self.store.get_wallet(w, cfg["wallets"]["wallet_cache_s"], now)
+            if cached is not None:
+                wd[w] = cached
+            else:
+                todo.append(w)
+
+        def fetch(w):
+            txs = self.helius.wallet_txs(w)
+            parsed = wallet_history.parse_wallet_txs(w, txs, 100, cfg["wallets"]["min_fund_sol"])
+            return {"parsed": parsed, "summary": wallet_history.summarize(parsed, cfg)}
+
+        got, _ = self._fetch_parallel(todo, fetch)
+        for w, c in got.items():
+            self.store.put_wallet(w, c, now)
+            wd[w] = c
+        return evaluate.evaluate_token(coin, trades, holders, minfo, ccoins, wd, cfg, now, excluded,
                                        {"data_source": "helius"})
 
     # ---------- un ciclo
     def cycle(self, now=None):
-        now = int(now or time.time())
+        t0 = time.time()
+        now = int(now or t0)
         cfg, st = self.cfg, self.store
         if not (self.gmgn.available or self.helius.available):
             self.err("sin fuente de holders: falta GMGN_API_KEY o HELIUS_API_KEY (o GMGN está en pausa por límite de uso)")
@@ -191,16 +229,23 @@ class Engine:
         except Exception as e:
             self.err(f"lista pump.fun: {e}")
             return
-        st.set_meta("last_cycle", {"ts": now, "listed": len(coins)})
         g = cfg["gates"]
-        eligible = []
+        eligible, other_quote = [], 0
         for c in coins:
             p = evaluate.curve_progress(c, cfg)
             if c["mcap_usd"] >= g["min_mcap_usd"] and g["min_curve_pct"] <= p < g["max_curve_pct"]:
+                if not c.get("sol_quote"):
+                    other_quote += 1  # fuera de alcance: no cotiza en SOL, no se puede fijar precio ni deslizamiento
+                    continue
                 eligible.append(c)
         due = [c for c in eligible if now - st.last_eval_ts(c["mint"]) >= cfg["deep_cache_seconds"]]
-        due.sort(key=lambda c: st.last_eval_ts(c["mint"]))
+        # primero los más avanzados en la curva: son los que están a punto de migrar y los que importan
+        due.sort(key=lambda c: -evaluate.curve_progress(c, cfg))
+        done = attempted = 0
         for c in due[: cfg["max_deep_per_cycle"]]:
+            if attempted and time.time() - t0 > cfg["cycle_budget_s"]:
+                break  # no empezar otro token si ya pasamos del presupuesto de tiempo
+            attempted += 1
             try:
                 res = self.deep(c, now)
             except GmgnRateLimited as e:
@@ -212,11 +257,29 @@ class Engine:
                 continue
             if res is None:
                 continue
+            done += 1
             st.add_observation(res)
             st.set_latest(res, c["name"], c["symbol"])
             self.after_eval(c, res, now)
         self.maybe_control(eligible, now)
-        self.sample_due(now)
+        st.set_meta("last_cycle", {"ts": now, "listed": len(coins), "eligible": len(eligible), "evaluated": done,
+                                   "pending": max(0, len(due) - attempted), "other_quote": other_quote,
+                                   "secs": round(time.time() - t0, 1)})
+        self.record_usage(now)
+
+    def record_usage(self, now):
+        """Suma el consumo de llamadas a Helius por día (para vigilar el gasto del plan)."""
+        u = self.helius.take_usage() if hasattr(self.helius, "take_usage") else {}
+        if not u:
+            return
+        day = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime("%Y-%m-%d")
+        log = self.store.get_meta("usage", {})
+        d = log.setdefault(day, {})
+        for k, v in u.items():
+            d[k] = d.get(k, 0) + v
+        for old in sorted(log)[:-7]:
+            del log[old]
+        self.store.set_meta("usage", log)
 
     def after_eval(self, coin, res, now):
         cfg, st = self.cfg, self.store
@@ -224,10 +287,10 @@ class Engine:
         tail = cfg["series"]["tail_s"]
         if res["score"] >= cfg["track_score"] and not res["discarded"]:
             if st.get_tracked(mint) is None:
-                st.track(mint, "candidate", now, now + tail, res["mcap"], coin["name"], coin["symbol"])
+                st.track(mint, "candidate", now, now + tail, res["mcap"], coin["name"], coin["symbol"], coin.get("bonding_curve"))
             else:
                 st.extend_tracking(mint, now + tail)
-            s = self.price_sample(mint, now)
+            s = self.price_sample(mint, now, coin.get("bonding_curve"))
             if s:
                 st.add_sample(mint, s)
         if passes(self.alert_variant, res["features"]) and not st.has_alert(mint):
@@ -248,10 +311,11 @@ class Engine:
         if not pool:
             return
         c = self.rng.choice(pool)
-        s = self.price_sample(c["mint"], now)
+        s = self.price_sample(c["mint"], now, c.get("bonding_curve"))
         if not s:
             return
-        st.track(c["mint"], "control", now, now + cfg["series"]["tail_s"], c["mcap_usd"], c["name"], c["symbol"])
+        st.track(c["mint"], "control", now, now + cfg["series"]["tail_s"], c["mcap_usd"], c["name"], c["symbol"],
+                 c.get("bonding_curve"))
         st.add_sample(c["mint"], s)
         st.set_meta("last_control", now)
 
@@ -259,7 +323,7 @@ class Engine:
         sc = self.cfg["series"]
         fails = 0
         for t in self.store.due_tracked(now):
-            s = self.price_sample(t["mint"], now)
+            s = self.price_sample(t["mint"], now, t["curve"])
             if s:
                 self.store.add_sample(t["mint"], s)
                 every = sc["fast_every_s"] if now - t["start_ts"] < sc["fast_until_s"] else sc["slow_every_s"]
@@ -270,17 +334,35 @@ class Engine:
         if fails:
             self.store.set_meta("sample_fails", {"ts": now, "n": fails})
 
+    # ---------- bucles
+    def _sampler_loop(self, stop):
+        """Muestrea precios en un hilo propio: un ciclo de análisis lento no debe retrasar las mediciones."""
+        store = self.store.clone()
+        s = Engine(self.cfg, store, pump=self.pump, helius=self.helius, dex=self.dex, log=self.log,
+                   rng=self.rng, gmgn=self.gmgn)
+        while not stop.is_set():
+            try:
+                s.sample_due(int(time.time()))
+            except Exception as e:
+                s.err(f"muestreo: {type(e).__name__}: {e}")
+            stop.wait(5)
+
     def run_forever(self):
         self.log("Radar en marcha. Solo avisa; no opera. Ctrl+C para parar.")
+        stop = threading.Event()
+        threading.Thread(target=self._sampler_loop, args=(stop,), daemon=True).start()
         last_report = 0
-        while True:
-            t0 = time.time()
-            try:
-                self.cycle()
-                if t0 - last_report > 1800:
-                    from .analysis import build_report
-                    self.store.set_meta("report", build_report(self.store, self.cfg, int(t0)))
-                    last_report = t0
-            except Exception as e:  # nunca morir por un fallo de red
-                self.err(f"ciclo: {type(e).__name__}: {e}")
-            time.sleep(max(1, self.cfg["poll_seconds"] - (time.time() - t0)))
+        try:
+            while True:
+                t0 = time.time()
+                try:
+                    self.cycle()
+                    if t0 - last_report > 1800:
+                        from .analysis import build_report
+                        self.store.set_meta("report", build_report(self.store, self.cfg, int(t0)))
+                        last_report = t0
+                except Exception as e:  # nunca morir por un fallo de red
+                    self.err(f"ciclo: {type(e).__name__}: {e}")
+                time.sleep(max(1, self.cfg["poll_seconds"] - (time.time() - t0)))
+        finally:
+            stop.set()

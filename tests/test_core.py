@@ -254,6 +254,41 @@ class Costs(unittest.TestCase):
         self.assertLess(ret, 1.0)
 
 
+class StopLoss(unittest.TestCase):
+    def series(self, prices, step=60, t0=1000):
+        return [{"ts": t0 + i * step, "price": p, "vsol": 100.0, "vtok": 100.0 * 100.0 / p, "liq": None, "complete": False,
+                 "sol_usd": 100.0} for i, p in enumerate(prices)]
+
+    def test_stop_hits_and_exits_after_reaction_time_at_worse_price(self):
+        cfg = load_config("/x")
+        cfg["costs"]["latency_s"] = 0
+        cfg["costs"]["stop_reaction_s"] = 60
+        # entrada a 1.0; cae a 0.38 (toca el suelo 0.4) y a la siguiente muestra ya está en 0.2
+        ser = self.series([1.0, 0.9, 0.38, 0.2, 0.1, 5.0, 5.0])
+        r = analysis.compute_rets(ser, 1000, cfg, 10 ** 9, [3600])[3600]
+        self.assertTrue(r["stopped"])
+        self.assertLess(r["ret"], -0.78)   # salió a 0.2, peor que el -60 % nominal
+        self.assertGreater(r["ret"], -0.9)
+
+    def test_no_stop_when_price_never_touches_floor(self):
+        cfg = load_config("/x")
+        cfg["costs"]["latency_s"] = 0
+        ser = self.series([1.0, 0.8, 0.6, 1.5, 1.6, 1.6, 1.6], step=600)
+        r = analysis.compute_rets(ser, 1000, cfg, 10 ** 9, [3000])[3000]
+        self.assertFalse(r["stopped"])
+        self.assertGreater(r["ret"], 0.4)
+
+    def test_recovery_after_stop_does_not_count(self):
+        """El stop corta la pérdida aunque luego rebote: la operación ya se cerró."""
+        cfg = load_config("/x")
+        cfg["costs"]["latency_s"] = 0
+        cfg["costs"]["stop_reaction_s"] = 0
+        ser = self.series([1.0, 0.3, 3.0, 3.0, 3.0], step=600)
+        r = analysis.compute_rets(ser, 1000, cfg, 10 ** 9, [2400])[2400]
+        self.assertTrue(r["stopped"])
+        self.assertLess(r["ret"], -0.6)
+
+
 class Stats(unittest.TestCase):
     def test_signflip_detects_real_edge_and_not_noise(self):
         self.assertLess(stats.signflip_test([0.2] * 30, 2000), 0.01)
@@ -356,7 +391,7 @@ class EndToEndMeasurement(unittest.TestCase):
                     t = t0 + (j + 1) * 60
                     st.db.execute("INSERT OR REPLACE INTO series VALUES(?,?,?,?,?,?,?,?,?)",
                                   (mint, t, price, price * 1e9, 100.0, 100 * 150 / price, None, 0, 150.0))
-                st.db.execute("INSERT INTO tracked VALUES(?,?,?,?,?,?,?,?)",
+                st.db.execute("INSERT INTO tracked(mint,kind,start_ts,until_ts,next_ts,mcap0,name,symbol) VALUES(?,?,?,?,?,?,?,?)",
                               (mint, "candidate" if is_c else "control", t0, t0 + 90000, t0 + 90001, mcap, "d", "D"))
                 if is_c:
                     f = {"progress": 85, "mcap": mcap, "score": 80 if good else 72, "unique_buyers": 20, "eff_independent": 8,

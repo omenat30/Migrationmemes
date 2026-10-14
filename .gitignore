@@ -1,5 +1,5 @@
 __pycache__/
 *.pyc
 .env
-data/*.sqlite
-data/*.json
+data/*
+!data/.gitkeep

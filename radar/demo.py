@@ -29,7 +29,7 @@ def synth_inputs(rng, kind, cfg, now, progress=0.88):
     coin = {"mint": mint, "name": "Demo " + kind, "symbol": kind[:4].upper() + str(rng.randint(10, 99)),
             "creator": creator, "bonding_curve": _addr(rng), "pool": None, "mcap_usd": mcap,
             "price_usd": mcap / 1e9, "real_sol": real, "real_tokens": None, "virtual_sol": vs,
-            "virtual_tokens": vt, "complete": False, "sol_usd": SOL_USD}
+            "virtual_tokens": vt, "complete": False, "sol_usd": SOL_USD, "sol_quote": True, "quote_decimals": 9}
     wallets = [_addr(rng) for _ in range(30)]
     holders = [{"owner": w, "amount": a} for w, a in zip(wallets[:14], sorted((rng.uniform(1, 9) * 1e6 for _ in range(14)), reverse=True))]
     trades = []
@@ -112,7 +112,7 @@ def populate(store, cfg, rng, now, n_cand=45, n_ctrl=90):
         p0 = mcap / 1e9
         add_series(mint, t0, p0, 100.0)
         until = t0 + sc["tail_s"]
-        store.db.execute("INSERT OR IGNORE INTO tracked VALUES(?,?,?,?,?,?,?,?)",
+        store.db.execute("INSERT OR IGNORE INTO tracked(mint,kind,start_ts,until_ts,next_ts,mcap0,name,symbol) VALUES(?,?,?,?,?,?,?,?)",
                          (mint, "candidate" if is_c else "control", t0, until, until + 1, mcap, "Demo", "DEMO"))
         if is_c:
             f = {"progress": rng.uniform(60, 98), "mcap": mcap, "score": rng.uniform(55, 90),
@@ -145,3 +145,39 @@ def populate(store, cfg, rng, now, n_cand=45, n_ctrl=90):
     store.set_meta("last_cycle", {"ts": now, "listed": 50})
     store.set_meta("sol_usd", {"ts": now, "v": SOL_USD})
     store.db.commit()
+
+
+def populate_recorder(store, cfg, rng, start, n=120):
+    """Histórico SINTÉTICO de migraciones para enseñar el backtest en el panel. No es real: una mezcla al azar de
+    tokens que completan, se hunden o quedan planos, sin relación con ninguna característica."""
+    from . import costs
+    sol = SOL_USD
+    for i in range(n):
+        t_entry = start + i * 2400
+        kind = rng.choices(["win", "dump", "flat"], [0.22, 0.62, 0.16])[0]
+        mint = f"DEMO{i:04d}" + "x" * 30
+        store.rec_add(mint, "C" + mint, "cr", "Demo", f"D{i}", t_entry - 3600, t_entry - 600, 80)
+        t = t_entry - 600
+        last = t
+        for k in range(41):
+            prog = 80 + k * 0.5
+            if prog >= 100:
+                break
+            vs, vt = costs.reserves_from_progress(prog, cfg)
+            price = vs / vt * sol
+            last = t + k * 15
+            store.rec_point(mint, last, prog, price, price * 1e9, vs, vt, None, "curve", sol)
+        vs, vt = costs.reserves_from_progress(99.9, cfg)
+        p_end = vs / vt * sol
+        if kind in ("win", "flat"):
+            store.rec_complete(mint, last + 15)
+            m = rng.uniform(0.85, 1.6) if kind == "win" else rng.uniform(0.6, 1.0)
+            for j in range(1, 120):
+                price = p_end * m * (1 + rng.gauss(0, 0.01)) ** j
+                store.rec_point(mint, last + 15 + j * 30, 100, price, price * 1e9, None, None, 150_000, "amm", sol)
+        else:
+            for j in range(1, 80):
+                price = p_end * max(0.08, 1 - rng.uniform(0.01, 0.04) * j)
+                store.rec_point(mint, last + j * 15, 95, price, price * 1e9, vs, vt, None, "curve", sol)
+        store.rec_set_feat(mint, {"top10_pct": rng.uniform(15, 50), "creator_rugs": rng.choice([0, 0, 1, 3]),
+                                  "buyers5": rng.randint(5, 60), "wash_share": rng.random() * 0.4}, t_entry - 900)

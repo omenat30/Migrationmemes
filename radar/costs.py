@@ -43,11 +43,16 @@ def reserves_from_progress(progress_pct, cfg):
     return (30 * 1_073_000_000 / vt, vt) if vt > 0 else (None, None)
 
 
+def position_sol(sample_or_coin, cfg):
+    """Tamaño de la operación en SOL: 100 USD / precio del SOL en ese momento."""
+    return cfg["costs"]["position_usd"] / (sample_or_coin.get("sol_usd") or 100.0)
+
+
 def entry_slippage(coin, cfg):
     """Deslizamiento de compra (en %) para el tamaño de posición, al evaluar."""
     c = cfg["costs"]
     vs, vt = coin.get("virtual_sol"), coin.get("virtual_tokens")
-    s = curve_buy_slip(vs, vt, c["position_sol"], c["fee_pct"])
+    s = curve_buy_slip(vs, vt, position_sol(coin, cfg), c["fee_pct"])
     return None if s is None else round(s * 100, 2)
 
 
@@ -55,9 +60,9 @@ def _slip_buy(sample, cfg):
     c = cfg["costs"]
     s = None
     if not sample.get("complete"):
-        s = curve_buy_slip(sample.get("vsol"), sample.get("vtok"), c["position_sol"], c["fee_pct"])
+        s = curve_buy_slip(sample.get("vsol"), sample.get("vtok"), position_sol(sample, cfg), c["fee_pct"])
     if s is None and sample.get("liq") and sample.get("sol_usd"):
-        s = amm_slip(c["position_sol"] * sample["sol_usd"], sample["liq"])
+        s = amm_slip(c["position_usd"], sample["liq"])
     return s if s is not None else c["exit_slippage_pct"] / 100
 
 
@@ -81,14 +86,15 @@ def net_return(entry, exit_, cfg):
     c = cfg["costs"]
     fee = c["fee_pct"] / 100
     sb = min(_slip_buy(entry, cfg), 0.9)
-    sol_usd = entry.get("sol_usd") or 150.0
-    pos_usd = c["position_sol"] * sol_usd
+    sol_usd = entry.get("sol_usd") or 100.0
+    pos_usd = c["position_usd"]
     tokens = pos_usd * (1 - fee) / (entry["price"] * (1 + sb))
     ss = min(_slip_sell(exit_, tokens, cfg), 0.95)
     gross = exit_["price"] / entry["price"]
     # gasto pos_usd (con comisión) -> tokens; al vender: precio * (1-deslizamiento) * (1-comisión)
-    ret = gross * (1 - ss) * (1 - fee) ** 2 / (1 + sb) - 1
-    ret -= 2 * c["priority_fee_sol"] / c["position_sol"]
+    fee_out = (c.get("amm_fee_pct", c["fee_pct"]) if exit_.get("complete") else c["fee_pct"]) / 100
+    ret = gross * (1 - ss) * (1 - fee_out) * (1 - fee) / (1 + sb) - 1
+    ret -= 2 * c["priority_fee_sol"] * sol_usd / pos_usd  # comisión de red de entrada y salida, en proporción a 100 USD
     rug = gross <= 1 - c["rug_drop_pct"] / 100 or (
         exit_.get("liq") is not None and exit_.get("complete") and exit_["liq"] < c["rug_liquidity_usd"])
     return ret, bool(rug)
