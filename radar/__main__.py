@@ -126,6 +126,37 @@ def cmd_wallets(cfg, a):
     print(json.dumps(rep, indent=2, ensure_ascii=False, default=str))
 
 
+def cmd_judge(cfg, a):
+    """Juzga wallets que TÚ eliges (de GMGN, Axiom...). Lee un archivo con una dirección por línea. Ver HIPOTESIS_v6.md."""
+    import re
+    from . import wallets
+    from .sources.helius import Helius
+    from .util import RateLimiter
+    addrs = []
+    with open(a.file, encoding="utf-8") as f:
+        for line in f:
+            w = line.split("#")[0].strip().split()[0] if line.split("#")[0].strip() else ""
+            if re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", w) and w not in addrs:
+                addrs.append(w)
+    print(f"{len(addrs)} direcciones válidas", flush=True)
+    st = _store(cfg)
+    scr = wallets.screen(st, Helius(cfg, RateLimiter(cfg["helius_rps"])), cfg, addrs, int(time.time()), workers=2,
+                         log=lambda m: print(m, flush=True))
+    rows = []
+    for w in addrs:
+        v = scr.get(w)
+        if not v:
+            print(f"{w[:8]}…  sin datos (límite de Helius: repite el comando)")
+            continue
+        x = v["summary"]
+        rows.append((v["class"], w, x))
+        fmt = lambda t, d=1: "—" if t is None else f"{t:.{d}f}"
+        print(f"{v['class']:13} {w}  cerradas {x['closed']:3} · ganancia {fmt(x['pnl_sol'])} SOL (sin sus 2 mejores: {fmt(x.get('pnl_ex_top2'))}) · "
+              f"aciertos {fmt((x['win_rate'] or 0) * 100, 0)}% · tenencia mediana {fmt((x['median_hold_s'] or 0) / 60, 0)} min · salidas <2 min {fmt((x['quick_exit_ratio'] or 0) * 100, 0)}%")
+    print("\nLeyenda: CANDIDATA = gana, aguanta y no sale corriendo; EXTRACTORA = cierra casi todo en <2 min; BOT = >300 operaciones/día.")
+    print("Una CANDIDATA no es «de fiar»: son solo sus últimas 100 transacciones. Contrástala con su PnL a 30 días en tu plataforma.")
+
+
 def cmd_analyze(cfg, a):
     st = _store(cfg)
     rep = analysis.build_report(st, cfg, int(time.time()))
@@ -264,6 +295,8 @@ def main():
         sub.add_parser(n)
     wl = sub.add_parser("wallets")
     wl.add_argument("--min-buy", type=float, default=1.0)
+    jd = sub.add_parser("judge")
+    jd.add_argument("file")
     sd = sub.add_parser("study")
     sd.add_argument("--src", default=None)
     bf = sub.add_parser("backfill")
@@ -278,7 +311,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

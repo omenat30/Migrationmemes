@@ -134,6 +134,8 @@ def summarize(parsed, cfg):
     closed = [p for p in sold if p["sell_tok"] >= 0.9 * p["buy_tok"]]
     holds = [max(p["first_sell"] - p["first_buy"], 0) for p in sold]
     pnl = sum(p["sell_sol"] - p["buy_sol"] for p in closed)
+    per = sorted((p["sell_sol"] - p["buy_sol"] for p in closed), reverse=True)
+    pnl_ex_top2 = sum(per[2:]) if len(per) > 2 else None  # sin sus 2 mejores operaciones: ¿vive de un golpe de suerte?
     wins = sum(1 for p in closed if p["sell_sol"] > p["buy_sol"])
     quick = sum(1 for hd in holds if hd < h["quick_exit_s"])
     open_unsold = sum(1 for p in pos.values() if p["buy_tok"] > 0 and p["first_sell"] is None)
@@ -158,7 +160,7 @@ def summarize(parsed, cfg):
         reason = "ok"
     return {
         "wallet": parsed["wallet"], "has_data": has_data, "closed": len(closed), "sold": len(sold),
-        "pnl_sol": round(pnl, 3), "win_rate": (wins / len(closed)) if closed else None,
+        "pnl_sol": round(pnl, 3), "pnl_ex_top2": None if pnl_ex_top2 is None else round(pnl_ex_top2, 3), "win_rate": (wins / len(closed)) if closed else None,
         "median_hold_s": med_hold, "quick_exit_ratio": quick_ratio, "open_unsold": open_unsold,
         "bot": bot, "quality": quality, "reason": reason,
     }

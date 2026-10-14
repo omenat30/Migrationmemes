@@ -67,3 +67,17 @@ class Follower(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PnlWithoutTopTwo(unittest.TestCase):
+    def test_luck_driven_profit_is_visible(self):
+        from radar import wallet_history
+        pos = {}
+        wins = [10.0, 8.0]          # dos golpes grandes
+        for i, g in enumerate(wins + [-1.0] * 6):
+            pos[f"M{i}"] = {"buy_sol": 1.0, "buy_tok": 100.0, "sell_sol": 1.0 + g, "sell_tok": 100.0,
+                            "first_buy": 1000 * i, "first_sell": 1000 * i + 900, "last_sell": 1000 * i + 900}
+        p = {"wallet": "W", "positions": pos, "n_trades": 16, "n_txs": 16, "span_s": 10 ** 6}
+        s = wallet_history.summarize(p, CFG)
+        self.assertGreater(s["pnl_sol"], 0)
+        self.assertLess(s["pnl_ex_top2"], 0)   # sin sus 2 mejores operaciones pierde: no es habilidad repetible

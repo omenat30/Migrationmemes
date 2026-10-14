@@ -43,7 +43,7 @@ def screen(store, helius, cfg, wallets, now, workers=5, log=print):
     out, todo = {}, []
     for w in wallets:
         c = store.get_wallet("w:" + w, cfg["wallets"]["wallet_cache_s"], now)
-        if c is not None:
+        if c is not None and "pnl_ex_top2" in c.get("summary", {}):  # caché de una versión anterior: se vuelve a pedir
             out[w] = c
         else:
             todo.append(w)
