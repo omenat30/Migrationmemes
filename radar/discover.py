@@ -63,3 +63,48 @@ def pool_trades(h, pool, mint, max_txs=700):
                 side, _, sol, _ = tr
                 out.append({"wallet": w, "is_buy": side == "buy", "sol": sol, "ts": t.get("timestamp") or 0})
     return out
+
+
+def venue_trades(h, address, mint, t0, t1, kind, max_pages=12, parse_budget=700):
+    """Operaciones de un token en un lugar (curva de pump.fun o pool) entre t0 y t1 (segundos). kind: 'curve' o 'pool'.
+    Pagina las firmas hacia atrás hasta pasar t0. Devuelve lista de {wallet, is_buy, sol, ts}."""
+    from .sources.curve_trades import trades_from_enhanced
+    from .wallet_history import derive_trade
+    sigs, before = [], None
+    for _ in range(max_pages):
+        page = h.curve_signatures(address, limit=1000, before=before)
+        if not page:
+            break
+        sigs.extend(x for x in page if not x.get("err"))
+        before = page[-1]["signature"]
+        if (page[-1].get("blockTime") or 0) < t0 or len(page) < 1000:
+            break
+    win = [x for x in sigs if t0 <= (x.get("blockTime") or 0) <= t1][:parse_budget]
+    out = []
+    for i in range(0, len(win), 100):
+        txs = h.parse_transactions([x["signature"] for x in win[i:i + 100]]) or []
+        if kind == "curve":
+            tr, _ = trades_from_enhanced(txs, mint, address)
+            out.extend({"wallet": t["wallet"], "is_buy": t["is_buy"], "sol": t["sol"], "ts": t["ts"]} for t in tr)
+        else:
+            for t in txs:
+                w = t.get("feePayer")
+                d = derive_trade(w, t) if w else None
+                if d and d[1] == mint:
+                    out.append({"wallet": w, "is_buy": d[0] == "buy", "sol": d[2], "ts": t.get("timestamp") or 0})
+    return out
+
+
+def cotraders(per_token_results, seed_wallets, min_tokens=3, min_mult=1.3, min_proceeds=0.5, min_hold_s=420):
+    """Wallets distintas de las semillas que ganaron en varios de los mismos tokens que la semilla."""
+    wins = defaultdict(list)
+    for mint, res in per_token_results.items():
+        for w, r in res.items():
+            if w in seed_wallets:
+                continue
+            mult = r["proceeds"] / r["cost"]
+            if mult >= min_mult and r["proceeds"] >= min_proceeds and r["hold"] >= min_hold_s:
+                wins[w].append((mint, mult, r["hold"]))
+    out = [(w, v) for w, v in wins.items() if len(v) >= min_tokens]
+    out.sort(key=lambda x: -len(x[1]))
+    return out

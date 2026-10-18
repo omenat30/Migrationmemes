@@ -75,3 +75,13 @@ Instrucciones: «al menos 30 días» de historial, periodo libre, al menos 5 car
 - Copiadas con costes (1 % por lado, impacto 2 % por 1.000 USD, 30 s de retraso, stop −60 %, 100 USD por operación): BcKqw3ZNH8 +0,87 R; DNPx2RFkeM +0,02 R;
   AfBKTi18w7 −0,03 R. **Solo una de las tres es rentable de copiar**: las otras ganan en la cadena pero no sobreviven a costes y retraso.
 - Conclusión: con este origen de candidatas no salen 5 carteras de mucha rentabilidad. El cuello de botella es descubrir wallets, no la lectura de Helius.
+
+## Búsqueda de wallets parecidas a BcKqw3ZNH8 (18-oct-2026)
+- Wallet de ejemplo del usuario, HSeCG7T2KC…: no es analizable como trader. Es una cuenta del sistema con ~692 SOL que figura (sin firmar y con saldo sin cambios)
+  en cientos de transacciones por segundo de pump.fun, casi todas fallidas. En 12.000 transacciones (menos de un minuto de actividad) no hay ninguna compra ni venta
+  suya. El historial por dirección de Helius no llega a 60 días hacia atrás en una cuenta así. Falta confirmar de dónde salió la dirección.
+- Co-operación (`python -m radar cotrade`): se leen, para los 114 tokens que operó BcKqw3ZNH8, todas las operaciones del token (curva por PDA y pool de DexScreener) en una
+  ventana de −30 min / +2 h alrededor de su entrada, y se buscan wallets que ganaron en varios de los mismos tokens aguantando ≥ 5 min.
+  Resultado: 12 co-operadoras con ≥ 2 tokens en común, 8 nuevas. Ninguna cumple los filtros: 5 son bots o scalpers (tenencia de 2–4 min) y las demás tienen < 30 días
+  de historial o no son rentables. La más rentable, HAFfm2fPfp (+92 %, 11 operaciones de +1000 %), sale y entra en 2 min de mediana: otro arquetipo.
+- Tasa de acierto: 1 wallet como BcKqw3ZNH8 entre ~175 analizadas (~0,6 %). Para 5 harían falta ~800 candidatas.

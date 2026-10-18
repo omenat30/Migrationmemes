@@ -263,6 +263,66 @@ def cmd_discover(cfg, a):
     print("guardado en", a.out)
 
 
+def cmd_cotrade(cfg, a):
+    """Busca wallets que ganaron en los mismos tokens que una wallet semilla (p. ej. la de +51 %), en la misma ventana de tiempo."""
+    from concurrent.futures import ThreadPoolExecutor
+    from . import discover
+    from .sources.dexscreener import DexScreener
+    from .sources.helius import Helius
+    from .sources.pumpfun import PumpFun
+    from .util import RateLimiter
+    import json as _json
+    h = Helius(cfg, RateLimiter(cfg["helius_rps"]))
+    dlim = RateLimiter(3)
+    seeds = [x.strip() for x in a.seeds.split(",") if x.strip()]
+    data = {r["metrics"]["wallet"]: r for r in _json.load(open(a.deep))}
+    jobs = []
+    for s_ in seeds:
+        r = next((v for k, v in data.items() if k.startswith(s_)), None)
+        if not r:
+            print("semilla no encontrada:", s_)
+            continue
+        for p in r["positions"]:
+            if p["mult"] >= a.min_seed_mult:
+                jobs.append((r["metrics"]["wallet"], p["mint"], p["entry_ts"], p["exit_ts"] or p["entry_ts"] + 3600))
+    jobs.sort(key=lambda j: -j[2])
+    jobs = jobs[: a.max_tokens]
+    print(f"tokens ganadores de las semillas a leer: {len(jobs)}", flush=True)
+    per_token, lock, n = {}, threading.Lock(), [0]
+    seed_set = {j[0] for j in jobs}
+
+    def work(j):
+        _, mint, t_in, t_out = j
+        res = {}
+        try:
+            from . import history, pda
+            d = history.dex_pair(mint, dlim) or {}
+            for kind, addr in (("curve", pda.bonding_curve(mint)), ("pool", d.get("pool"))):
+                if not addr:
+                    continue
+                tr = discover.venue_trades(h, addr, mint, t_in - a.before_s, t_in + a.after_s, kind)
+                for w, r_ in discover.wallet_results(tr).items():
+                    if w not in res or r_["cost"] > res[w]["cost"]:
+                        res[w] = r_
+        except Exception as e:
+            print("  error", mint[:8], str(e)[:70], flush=True)
+        with lock:
+            n[0] += 1
+            per_token[mint] = res
+            print(f"[{n[0]}/{len(jobs)}] {mint[:8]} {len(res)} wallets compraron y vendieron en la ventana", flush=True)
+
+    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+        list(ex.map(work, jobs))
+    _json.dump(per_token, open(a.out + ".json", "w"))
+    cands = discover.cotraders(per_token, seed_set, min_tokens=a.min_tokens)
+    print(f"co-operadoras (ganaron en >= {a.min_tokens} de los mismos tokens): {len(cands)}")
+    with open(a.out, "w", encoding="utf-8") as f:
+        f.write("# co-operadoras de las semillas\n")
+        for w, v in cands:
+            f.write(f"{w}  # {len(v)} tokens en comun, mejor x{max(m for _, m, _ in v):.1f}\n")
+    print("guardado en", a.out)
+
+
 def cmd_sweep(cfg, a):
     """Barrido diario: analiza las wallets de los archivos de semillas y escribe los documentos para la base de datos del panel.
     --prev: JSON {dirección: {joined_ts, status}} con el estado actual del panel (lo lee la rutina desde la base de datos)."""
@@ -454,6 +514,16 @@ def main():
     ds.add_argument("--mode", choices=["curve", "pool"], default="pool")
     ds.add_argument("--min-proceeds", type=float, default=1.0)
     ds.add_argument("--out", default="data/candidates.txt")
+    ct = sub.add_parser("cotrade")
+    ct.add_argument("--deep", required=True)
+    ct.add_argument("--seeds", required=True)
+    ct.add_argument("--min-seed-mult", type=float, default=1.5)
+    ct.add_argument("--max-tokens", type=int, default=60)
+    ct.add_argument("--before-s", type=int, default=1800)
+    ct.add_argument("--after-s", type=int, default=7200)
+    ct.add_argument("--min-tokens", type=int, default=3)
+    ct.add_argument("--workers", type=int, default=2)
+    ct.add_argument("--out", default="data/cotrade.txt")
     sw = sub.add_parser("sweep")
     sw.add_argument("files", nargs="+")
     sw.add_argument("--prev", default=None)
@@ -475,7 +545,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
