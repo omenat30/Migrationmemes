@@ -115,6 +115,8 @@ def passes(m, cfg, flt=None):
         why.append("tenencia mediana %s < %d min" % ("—" if m["median_hold_s"] is None else "%.0f min" % (m["median_hold_s"] / 60), f["min_hold_s"] // 60))
     if m["short_hold_share"] is not None and m["short_hold_share"] > f["max_short_share"]:
         why.append("%.0f%% de salidas en menos de %d min" % (m["short_hold_share"] * 100, f["short_hold_s"] // 60))
+    if m["roi"] is not None and m["roi"] > 0 and m["roi"] < f.get("min_roi", 0):
+        why.append("rentabilidad %.0f %% < %.0f %%" % (m["roi"] * 100, f["min_roi"] * 100))
     if m["roi"] is None or m["roi"] <= 0 or m["pnl_ex_top2"] is None or m["pnl_ex_top2"] <= 0:
         why.append("no es rentable si se quitan sus 2 mejores operaciones (vive de suerte)")
     return (not why), why

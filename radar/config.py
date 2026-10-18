@@ -39,7 +39,7 @@ DEFAULTS = {
     "backtest": {"min_mcap_usd": 30000, "max_hold_s": 7200, "exit_delay_s": 60, "target_pct": 30, "time30_s": 1800,
                  "min_n_select": 15, "min_n_test": 30, "ci_seed": 7, "boot": 2000, "latency_grid_s": [30, 60, 120, 300]},
     # Panel de copia (HIPOTESIS_v7.md): filtros del usuario para elegir wallets a copiar.
-    "copy": {"min_hits10": 1, "min_closed": 20, "min_hold_s": 600, "short_hold_s": 120, "max_short_share": 0.35,
+    "copy": {"min_hits10": 0, "min_roi": 0.05, "min_closed": 20, "min_hold_s": 600, "short_hold_s": 120, "max_short_share": 0.35,
              "stop_loss_pct": 60.0, "top_n": 10, "days": 60, "min_span_days": 30, "hit_mult": 11.0},
     "series": {"fast_every_s": 60, "fast_until_s": 7200, "slow_every_s": 900, "tail_s": 90000},
     "control_per_hour": 12,

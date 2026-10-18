@@ -6,7 +6,7 @@ los documentos que hay que dejar en la base de datos del artefacto:
   meta/sweep           {ts, sol_usd, analyzed, active, changes: [{ts, type, wallet, why}]}
 
 Reglas:
-  - Entra en `wallets` toda wallet con al menos `keep_min_closed` operaciones cerradas y alguna operación de +1000 %: el panel
+  - Entra en `wallets` toda wallet con al menos `keep_min_closed` operaciones cerradas y alguna operación de +1000 % o una rentabilidad > 5 %: el panel
     aplica sus filtros en vivo, así que conviene guardar también las que hoy no cumplen los filtros por defecto.
   - `status` = "active" si cumple los filtros por defecto (deepwallet.passes), "candidate" si no.
   - `joined_ts` = primera vez que cumplió los filtros. Es el inicio del tramo «desde que entró»: lo único que no está
@@ -55,7 +55,7 @@ def build_docs(results, prev, cfg, now=None, sol_usd=None, passes=None):
         was = prev.get(w) or {}
         prev_status = was.get("status")
         joined = was.get("joined_ts")
-        keep = m["n_closed"] >= KEEP_MIN_CLOSED and m["hits10"] >= 1
+        keep = m["n_closed"] >= KEEP_MIN_CLOSED and (m["hits10"] >= 1 or (m["roi"] or 0) > 0.05)
         if not keep and not was:
             continue
         if ok:

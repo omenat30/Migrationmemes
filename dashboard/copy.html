@@ -80,7 +80,7 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
   <header>
     <div>
       <h1>Wallets copiables</h1>
-      <p class="sub">Wallets de Solana con operaciones sueltas de +1000 % o más en 60 días, con al menos 30 días de historial y una tenencia mediana de al menos 10 minutos. Simula qué habrías ganado copiándolas con tu tamaño por operación.</p>
+      <p class="sub">Wallets de Solana con rentabilidad alta en 60 días (con operaciones de +1000 % marcadas), con al menos 30 días de historial y una tenencia mediana de al menos 10 minutos. Simula qué habrías ganado copiándolas con tu tamaño por operación.</p>
     </div>
     <div class="status" id="status"><span class="pill stale"><span class="dot"></span>conectando…</span></div>
   </header>
@@ -112,7 +112,8 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
         <div class="fld"><label for="f_hold">Tenencia mediana mín. (min)</label><input class="sm" type="number" id="f_hold" min="0" value="10"></div>
         <div class="fld"><label for="f_short">Salidas &lt;2 min máx. (%)</label><input class="sm" type="number" id="f_short" min="0" max="100" value="35"></div>
         <div class="fld"><label for="f_ops">Operaciones mín.</label><input class="sm" type="number" id="f_ops" min="0" value="20"></div>
-        <div class="fld"><label for="f_hits">Ops. ≥ +1000 % mín.</label><input class="sm" type="number" id="f_hits" min="0" value="1"></div>
+        <div class="fld"><label for="f_hits">Ops. ≥ +1000 % mín.</label><input class="sm" type="number" id="f_hits" min="0" value="0"></div>
+        <div class="fld"><label for="f_roi">Rentabilidad mín. (%)</label><input class="sm" type="number" id="f_roi" min="0" value="5"></div>
         <div class="fld"><label for="f_top">Wallets a mostrar</label><input class="sm" type="number" id="f_top" min="1" max="50" value="10"></div>
         <div class="fld"><label for="a_fee">Comisión por lado (%)</label><input class="sm" type="number" id="a_fee" step="0.1" value="1"></div>
         <div class="fld"><label for="a_imp">Impacto por 1.000 USD (%)</label><input class="sm" type="number" id="a_imp" step="0.1" value="2"></div>
@@ -189,7 +190,7 @@ function fmtMin(s){return s==null?"—":(s<3600?(s/60).toFixed(0)+" min":(s/3600
 function fmtDate(ts){return new Date(ts*1000).toLocaleDateString("es-ES",{day:"2-digit",month:"short"})}
 function cls(x){return x==null?"":x>0?"pos":x<0?"neg":""}
 
-var state={size:100,delay:30,stop:true,mode:"hist",hold:10,short:35,ops:20,hits:1,top:10,fee:1,imp:2,pen:null};
+var state={size:100,delay:30,stop:true,mode:"hist",hold:10,short:35,ops:20,hits:0,roi:5,top:10,fee:1,imp:2,pen:null};
 var WINDOW_DAYS=60,MIN_SPAN=30;
 var wallets=[],meta=null,connected=false;
 
@@ -215,6 +216,7 @@ function evalWallet(w){
   if(w.m&&w.m.span_days!=null&&w.m.span_days<MIN_SPAN-0.5)why.push("historial de solo "+Math.round(w.m.span_days)+" días");
   if(m.n<state.ops)why.push("operaciones "+m.n+" < "+state.ops);
   if(m.hits<state.hits)why.push("sólo "+m.hits+" op. de +1000 %");
+  if(m.roi==null||m.roi*100<state.roi)why.push("rentabilidad "+(m.roi==null?"—":(m.roi*100).toFixed(0)+" %")+" < "+state.roi+" %");
   if(m.medHold==null||m.medHold<state.hold*60)why.push("tenencia mediana "+fmtMin(m.medHold)+" < "+state.hold+" min");
   if(m.shortShare!=null&&m.shortShare*100>state.short)why.push((m.shortShare*100).toFixed(0)+" % de salidas en <2 min");
   if(!(m.roi>0)||m.pnlEx2==null||!(m.pnlEx2>0))why.push("sin sus 2 mejores operaciones no gana");
@@ -258,8 +260,8 @@ function render(){
   $("tiles").innerHTML=tiles.map(function(t){return '<div class="tile"><div class="l">'+t[0]+'</div><div class="v '+t[2]+'">'+t[1]+'</div><div class="n">'+t[3]+'</div></div>'}).join("");
   chart(agg);
 
-  var head='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Mejor</th><th>Tenencia med.</th><th>Salidas &lt;2 min</th><th>Gana sin sus 2 mejores</th><th>Expected R copiando</th><th>Resultado tuyo</th><th>Sin sus 2 mejores</th><th>Su op. típica</th></tr></thead>';
-  $("tbl").innerHTML=head+(ok.length?'<tbody>'+ok.map(function(e){return row(e,sol)}).join("")+'</tbody>':'<tbody><tr><td colspan="11" class="empty">Ninguna wallet cumple estos filtros ahora mismo.</td></tr></tbody>');
+  var head='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Mejor</th><th>Rentab.</th><th>Tenencia med.</th><th>Salidas &lt;2 min</th><th>Gana sin sus 2 mejores</th><th>Expected R copiando</th><th>Resultado tuyo</th><th>Sin sus 2 mejores</th><th>Su op. típica</th></tr></thead>';
+  $("tbl").innerHTML=head+(ok.length?'<tbody>'+ok.map(function(e){return row(e,sol)}).join("")+'</tbody>':'<tbody><tr><td colspan="12" class="empty">Ninguna wallet cumple estos filtros ahora mismo.</td></tr></tbody>');
 
   $("failcard").hidden=!fail.length;
   $("failsum").textContent=fail.length+" wallets analizadas que no cumplen tus filtros (y por qué)";
@@ -277,7 +279,7 @@ function row(e,sol){
   var big=(m.medCost!=null&&sol&&state.size>m.medCost*sol*3)?' <span class="tag warn" title="Tu tamaño es más de 3 veces el suyo: el impacto real puede ser mayor que el supuesto">tamaño alto</span>':"";
   var isNew=e.w.joined_ts&&(Date.now()/1000-e.w.joined_ts)<3*86400;
   return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+'</td>'+
-   '<td class="num">'+m.n+'</td><td class="num">'+m.hits+'</td><td class="num">x'+(m.best==null?"—":m.best.toFixed(1))+'</td>'+
+   '<td class="num">'+m.n+'</td><td class="num">'+m.hits+'</td><td class="num">x'+(m.best==null?"—":m.best.toFixed(1))+'</td><td class="num '+cls(m.roi)+'">'+(m.roi==null?"—":(m.roi*100).toFixed(0)+" %")+'</td>'+
    '<td class="num">'+fmtMin(m.medHold)+'</td><td class="num">'+fmtPct(m.shortShare)+'</td>'+
    '<td class="num '+cls(m.pnlEx2)+'">'+(m.pnlEx2==null?"—":(m.pnlEx2>=0?"+":"−")+Math.abs(m.pnlEx2).toFixed(1)+" SOL")+'</td>'+
    '<td class="num '+cls(s.expectedR)+'">'+fmtR(s.expectedR)+'</td><td class="num '+cls(s.totalUsd)+'">'+fmtUsd(s.totalUsd)+'</td>'+
@@ -307,8 +309,8 @@ function chart(agg){
     '<circle cx="'+X(last[0]).toFixed(1)+'" cy="'+Y(last[1]).toFixed(1)+'" r="4" fill="'+col+'"/>'+ticks+'</svg>';
 }
 
-var FPRE={mid:{hold:10,short:35,ops:20,hits:1},strict:{hold:30,short:25,ops:20,hits:1},loose:{hold:2,short:55,ops:20,hits:1}};
-function fpreCur(){for(var k in FPRE){var f=FPRE[k];if(f.hold===state.hold&&f.short===state.short&&f.ops===state.ops&&f.hits===state.hits)return k}return ""}
+var FPRE={mid:{hold:10,short:35,ops:20,hits:0,roi:5},strict:{hold:30,short:25,ops:20,hits:1,roi:10},loose:{hold:2,short:55,ops:20,hits:0,roi:0}};
+function fpreCur(){for(var k in FPRE){var f=FPRE[k];if(f.hold===state.hold&&f.short===state.short&&f.ops===state.ops&&f.hits===state.hits&&f.roi===state.roi)return k}return ""}
 function buildControls(){
   $("presets").innerHTML=[50,100,250,500,1000,2500].map(function(v){return '<button type="button" data-v="'+v+'" aria-pressed="false">'+v+'</button>'}).join("");
   $("delay").innerHTML=[30,60,120].map(function(v){return '<button type="button" data-v="'+v+'" aria-pressed="false">'+v+' s</button>'}).join("");
@@ -322,21 +324,21 @@ function sync(){
 function num(id,fb){var v=parseFloat($(id).value);return isFinite(v)&&v>=0?v:fb}
 function readInputs(){
   state.size=Math.max(1,num("size",100));state.stop=$("stop").checked;
-  state.hold=num("f_hold",30);state.short=num("f_short",25);state.ops=num("f_ops",20);state.hits=num("f_hits",1);state.top=Math.max(1,Math.min(50,num("f_top",10)));
+  state.hold=num("f_hold",30);state.short=num("f_short",25);state.ops=num("f_ops",20);state.hits=num("f_hits",0);state.roi=num("f_roi",5);state.top=Math.max(1,Math.min(50,num("f_top",10)));
   state.fee=num("a_fee",1);state.imp=num("a_imp",2);
   var p=parseFloat($("a_pen").value);state.pen=isFinite(p)?p/100:null;
 }
-function save(){try{localStorage.setItem("copy_state4",JSON.stringify(state))}catch(x){}}
+function save(){try{localStorage.setItem("copy_state5",JSON.stringify(state))}catch(x){}}
 buildControls();
 document.addEventListener("input",function(e){if(e.target.tagName==="INPUT"){readInputs();sync();render();save()}});
 $("presets").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;$("size").value=b.dataset.v;readInputs();sync();render();save()});
 $("delay").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.delay=+b.dataset.v;sync();render();save()});
 $("fpre").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;var f=FPRE[b.dataset.v];
-  state.hold=f.hold;state.short=f.short;state.ops=f.ops;state.hits=f.hits;
+  state.hold=f.hold;state.short=f.short;state.ops=f.ops;state.hits=f.hits;state.roi=f.roi;$("f_roi").value=f.roi;
   $("f_hold").value=f.hold;$("f_short").value=f.short;$("f_ops").value=f.ops;$("f_hits").value=f.hits;sync();render();save()});
 $("mode").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.mode=b.dataset.v;sync();render();save()});
-try{var sv=JSON.parse(localStorage.getItem("copy_state4")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
-  $("size").value=state.size;$("stop").checked=state.stop;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
+try{var sv=JSON.parse(localStorage.getItem("copy_state5")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
+  $("size").value=state.size;$("stop").checked=state.stop;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_roi").value=state.roi;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
 sync();render();
 
 (async function(){

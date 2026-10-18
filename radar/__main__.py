@@ -233,11 +233,14 @@ def cmd_discover(cfg, a):
 
     def work(c):
         try:
-            sigs = [x for x in h.curve_signatures(c["bonding_curve"], limit=1000) if not x.get("err")][: a.max_txs]
-            trades = []
-            for i in range(0, len(sigs), 100):
-                tr, _ = trades_from_enhanced(h.parse_transactions([x["signature"] for x in sigs[i:i + 100]]), c["mint"], c["bonding_curve"])
-                trades.extend(tr)
+            if a.mode == "pool":
+                trades = discover.pool_trades(h, c["pool"], c["mint"], a.max_txs) if c.get("pool") else []
+            else:
+                sigs = [x for x in h.curve_signatures(c["bonding_curve"], limit=1000) if not x.get("err")][: a.max_txs]
+                trades = []
+                for i in range(0, len(sigs), 100):
+                    tr, _ = trades_from_enhanced(h.parse_transactions([x["signature"] for x in sigs[i:i + 100]]), c["mint"], c["bonding_curve"])
+                    trades.extend(tr)
             res = discover.wallet_results(trades)
         except Exception as e:
             res, trades = {}, []
@@ -249,7 +252,9 @@ def cmd_discover(cfg, a):
 
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         list(ex.map(work, coins))
-    cands = discover.pick_candidates(per_token, min_tokens=a.min_tokens, min_mult=a.min_mult)
+    import json as _json
+    _json.dump(per_token, open(a.out + ".json", "w"))
+    cands = discover.pick_candidates(per_token, min_tokens=a.min_tokens, min_mult=a.min_mult, min_proceeds=a.min_proceeds)
     print(f"candidatas (ganaron >= x{a.min_mult} en >= {a.min_tokens} tokens aguantando >= 10 min): {len(cands)}")
     with open(a.out, "w", encoding="utf-8") as f:
         f.write("# candidatas del descubrimiento en curvas migradas\n")
@@ -446,6 +451,8 @@ def main():
     ds.add_argument("--workers", type=int, default=3)
     ds.add_argument("--min-tokens", type=int, default=2)
     ds.add_argument("--min-mult", type=float, default=2.0)
+    ds.add_argument("--mode", choices=["curve", "pool"], default="pool")
+    ds.add_argument("--min-proceeds", type=float, default=1.0)
     ds.add_argument("--out", default="data/candidates.txt")
     sw = sub.add_parser("sweep")
     sw.add_argument("files", nargs="+")

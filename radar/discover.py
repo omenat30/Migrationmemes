@@ -39,3 +39,27 @@ def pick_candidates(per_token, min_tokens=2, min_mult=2.0, min_proceeds=1.0, min
     cands = [(w, v) for w, v in wins.items() if len(v) >= min_tokens]
     cands.sort(key=lambda x: (-len(x[1]), -max(m for _, m, _ in x[1])))
     return cands
+
+
+def pool_trades(h, pool, mint, max_txs=700):
+    """Operaciones de la wallet que firma en el pool de PumpSwap (tras migrar). Devuelve lista de {wallet, is_buy, sol, ts}."""
+    from .wallet_history import derive_trade
+    sigs, before = [], None
+    for _ in range(3):
+        page = h.curve_signatures(pool, limit=1000, before=before)
+        if not page:
+            break
+        sigs.extend(x for x in page if not x.get("err"))
+        before = page[-1]["signature"]
+        if len(page) < 1000 or len(sigs) >= max_txs:
+            break
+    out = []
+    sigs = sigs[:max_txs]
+    for i in range(0, len(sigs), 100):
+        for t in h.parse_transactions([x["signature"] for x in sigs[i:i + 100]]) or []:
+            w = t.get("feePayer")
+            tr = derive_trade(w, t) if w else None
+            if tr and tr[1] == mint:
+                side, _, sol, _ = tr
+                out.append({"wallet": w, "is_buy": side == "buy", "sol": sol, "ts": t.get("timestamp") or 0})
+    return out
