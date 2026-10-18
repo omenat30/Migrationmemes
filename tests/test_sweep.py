@@ -63,3 +63,15 @@ class SweepTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DustTest(unittest.TestCase):
+    def test_dust_in_route_is_ignored_but_real_second_token_is_not(self):
+        from radar import wallet_history as wh
+        W = "Wxxxx"
+        tx = {"tokenTransfers": [{"mint": "A", "tokenAmount": 1000, "toUserAccount": W, "fromUserAccount": "p"},
+                                 {"mint": "B", "tokenAmount": 1e-7, "toUserAccount": "p", "fromUserAccount": W}],
+              "accountData": [{"account": W, "nativeBalanceChange": -2_000_000_000}]}
+        self.assertEqual(wh.derive_trade(W, tx), ("buy", "A", 2.0, 1000.0))
+        tx["tokenTransfers"][1]["tokenAmount"] = 900
+        self.assertIsNone(wh.derive_trade(W, tx))

@@ -46,7 +46,9 @@ def derive_trade(wallet, tx):
         if x.get("fromUserAccount") == wallet:
             net[m] = net.get(m, 0.0) - amt
     wsol = net.pop(WSOL, 0.0)
-    tokens = {m: v for m, v in net.items() if abs(v) > 0}
+    big = max((abs(v) for v in net.values()), default=0.0)
+    # polvo de otros tokens en rutas de Jupiter (movimientos de ~1e-9 veces el token principal): no es una operación aparte
+    tokens = {m: v for m, v in net.items() if abs(v) > 1e-6 * big and abs(v) > 0}
     if len(tokens) != 1:
         return None
     (mint, tok), = tokens.items()

@@ -204,6 +204,60 @@ def cmd_deep(cfg, a):
     print(f"guardado en {a.out} ({len(done)} wallets)")
 
 
+def cmd_discover(cfg, a):
+    """Busca wallets candidatas en las curvas de tokens de pump.fun ya migrados (Helius: firmas y transacciones de la curva)."""
+    from concurrent.futures import ThreadPoolExecutor
+    from . import discover
+    from .sources.curve_trades import trades_from_enhanced
+    from .sources.dexscreener import DexScreener
+    from .sources.helius import Helius
+    from .sources.pumpfun import PumpFun
+    from .util import RateLimiter
+    h = Helius(cfg, RateLimiter(cfg["helius_rps"]))
+    pf = PumpFun(cfg, RateLimiter(6))
+    sol = DexScreener(cfg, RateLimiter(2)).sol_usd()
+    coins, seen = [], set()
+    for off in range(0, 50 * a.pages, 50):
+        try:
+            page = pf.list_live(sol, offset=off)
+        except Exception:
+            break
+        for c in page:
+            if c["mint"] in seen or not c["mint"].endswith("pump") or not c.get("complete") or c.get("quote_decimals") != 9 or not c.get("bonding_curve"):
+                continue
+            seen.add(c["mint"])
+            coins.append(c)
+    coins = coins[: a.tokens]
+    print(f"tokens migrados a leer: {len(coins)}", flush=True)
+    per_token, lock, n = {}, threading.Lock(), [0]
+
+    def work(c):
+        try:
+            sigs = [x for x in h.curve_signatures(c["bonding_curve"], limit=1000) if not x.get("err")][: a.max_txs]
+            trades = []
+            for i in range(0, len(sigs), 100):
+                tr, _ = trades_from_enhanced(h.parse_transactions([x["signature"] for x in sigs[i:i + 100]]), c["mint"], c["bonding_curve"])
+                trades.extend(tr)
+            res = discover.wallet_results(trades)
+        except Exception as e:
+            res, trades = {}, []
+            print("  error", c["mint"][:8], str(e)[:60], flush=True)
+        with lock:
+            n[0] += 1
+            per_token[c["mint"]] = res
+            print(f"[{n[0]}/{len(coins)}] {c['symbol'][:12]:12} {len(trades)} operaciones · {len(res)} wallets compraron y vendieron", flush=True)
+
+    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+        list(ex.map(work, coins))
+    cands = discover.pick_candidates(per_token, min_tokens=a.min_tokens, min_mult=a.min_mult)
+    print(f"candidatas (ganaron >= x{a.min_mult} en >= {a.min_tokens} tokens aguantando >= 10 min): {len(cands)}")
+    with open(a.out, "w", encoding="utf-8") as f:
+        f.write("# candidatas del descubrimiento en curvas migradas\n")
+        for w, v in cands:
+            f.write(f"{w}  # {len(v)} tokens, mejor x{max(m for _, m, _ in v):.1f}\n")
+    print("guardado en", a.out)
+
+
 def cmd_sweep(cfg, a):
     """Barrido diario: analiza las wallets de los archivos de semillas y escribe los documentos para la base de datos del panel.
     --prev: JSON {dirección: {joined_ts, status}} con el estado actual del panel (lo lee la rutina desde la base de datos)."""
@@ -385,6 +439,14 @@ def main():
     dp.add_argument("--pages", type=int, default=40)
     dp.add_argument("--out", default="data/deep.json")
     dp.add_argument("--workers", type=int, default=1)
+    ds = sub.add_parser("discover")
+    ds.add_argument("--pages", type=int, default=12)
+    ds.add_argument("--tokens", type=int, default=80)
+    ds.add_argument("--max-txs", type=int, default=800)
+    ds.add_argument("--workers", type=int, default=3)
+    ds.add_argument("--min-tokens", type=int, default=2)
+    ds.add_argument("--min-mult", type=float, default=2.0)
+    ds.add_argument("--out", default="data/candidates.txt")
     sw = sub.add_parser("sweep")
     sw.add_argument("files", nargs="+")
     sw.add_argument("--prev", default=None)
@@ -406,7 +468,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

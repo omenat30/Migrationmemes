@@ -105,6 +105,8 @@ def passes(m, cfg, flt=None):
     why = []
     if m["bot"]:
         why.append("bot (demasiadas operaciones por día)")
+    if m["span_days"] < f.get("min_span_days", 0) - 0.5:
+        why.append("historial de solo %.0f días (< %d)" % (m["span_days"], f["min_span_days"]))
     if m["n_closed"] < f["min_closed"]:
         why.append("pocas operaciones cerradas (%d < %d)" % (m["n_closed"], f["min_closed"]))
     if m["hits10"] < f["min_hits10"]:
