@@ -62,3 +62,16 @@ Ventana de 30 días, tenencia mediana ≥ 10 min, ≤ 35 % de salidas en menos d
 Recalculado sobre las mismas 130 wallets: **cumple 1** (BcKqw3ZNH8: 93 op., 2 de +1000 %, 23 min, +302 SOL sin sus 2 mejores).
 DK3h7FvuGz y HD37a8wp8m, que habían entrado con la ventana de 60 días, salen el mismo día: en 30 días DK3h7FvuGz baja a 8 min de tenencia
 y pierde sin sus 2 mejores operaciones, y HD37a8wp8m no tiene ninguna operación de +1000 % dentro de los 30 días. Queda registrado como cambio en el panel.
+
+## Corrección del usuario y barrido ampliado (18-oct-2026)
+Instrucciones: «al menos 30 días» de historial, periodo libre, al menos 5 carteras muy rentables.
+- Ventana de análisis 60 días; historial mínimo 30 días; tenencia mediana ≥ 10 min; ≤ 35 % de salidas en menos de 2 min; ≥ 20 operaciones cerradas;
+  rentabilidad ≥ 5 % y ganancia positiva sin sus 2 mejores operaciones. Ya no se exige una operación de +1000 %; se muestra su recuento.
+- Fallo de datos corregido: rutas de Jupiter con polvo de otros tokens (~1e-9 del token principal) hacían descartar hasta el 40 % de las operaciones de algunas
+  wallets (DK3h7FvuGz pasó de +8 % a −0 % de rentabilidad al corregirlo). Todo se reanalizó (145 wallets) con la corrección. Prueba en `tests/test_sweep.py`.
+- Descubrimiento nuevo (`python -m radar discover`): lee las operaciones del pool de ~280 tokens ya migrados y se queda con quien ganó ≥ x3 aguantando ≥ 10 min.
+  Dio 23 candidatas; ninguna repetía en dos tokens. Entraron al análisis completo 18 de ellas (el resto falló por límite de ritmo de Helius).
+- Resultado con los filtros por defecto: **3 wallets** (BcKqw3ZNH8, AfBKTi18w7, DNPx2RFkeM). Casi entran 7XURCfraWR (+805 SOL, 8,9 min) y HD37a8wp8m (9 min).
+- Copiadas con costes (1 % por lado, impacto 2 % por 1.000 USD, 30 s de retraso, stop −60 %, 100 USD por operación): BcKqw3ZNH8 +0,87 R; DNPx2RFkeM +0,02 R;
+  AfBKTi18w7 −0,03 R. **Solo una de las tres es rentable de copiar**: las otras ganan en la cadena pero no sobreviven a costes y retraso.
+- Conclusión: con este origen de candidatas no salen 5 carteras de mucha rentabilidad. El cuello de botella es descubrir wallets, no la lectura de Helius.
