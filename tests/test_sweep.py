@@ -93,13 +93,14 @@ class GmgnDiscoverTest(unittest.TestCase):
 
             def wallet_stats(self, ws, period):
                 self.stat_calls.append(list(ws))
-                return {"W1": {"pnl": 0.5, "winrate": 0.6, "buys": 30, "realized_profit": 900.0},
-                        "W3": {"pnl": 0.1, "winrate": 0.6, "buys": 30, "realized_profit": 900.0}}
+                allst = {"W1": {"pnl": 0.5, "winrate": 0.6, "buys": 30, "realized_profit": 900.0},
+                         "W3": {"pnl": 0.1, "winrate": 0.6, "buys": 30, "realized_profit": 900.0}}
+                return {w: allst[w] for w in ws if w in allst}
 
         g = FakeG()
         out = discover.gmgn_candidates(g, intervals=("24h",), order_by=("volume",), log=lambda m: None)
         self.assertEqual([w for w, _ in out], ["W1"])
-        self.assertEqual(g.stat_calls, [["W1", "W3"]])  # W2 no llega a la ganancia mínima por token
+        self.assertEqual(g.stat_calls, [["W1"], ["W3"]])  # de una en una; W2 no llega a la ganancia mínima por token
 
 
 class GmgnWalletTest(unittest.TestCase):

@@ -110,17 +110,40 @@ def cotraders(per_token_results, seed_wallets, min_tokens=3, min_mult=1.3, min_p
     return out
 
 
+def _patient(fn, tries=4, log=print):
+    """Llama a fn(); si GMGN limita el uso, espera a que acabe el bloqueo (más un margen) y vuelve a intentarlo.
+    Nunca reintenta durante el bloqueo: hacerlo lo alarga."""
+    import time as _t
+    from .sources.gmgn import GmgnRateLimited
+    for i in range(tries):
+        try:
+            return fn()
+        except GmgnRateLimited as e:
+            wait = max(5.0, (e.reset_at or _t.time() + 60) - _t.time() + 4)
+            log(f"  GMGN limita el uso; espero {wait:.0f} s")
+            _t.sleep(wait)
+    return fn()
+
+
 def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by=("volume", "smart_degen_count"),
                     min_trader_profit_usd=300.0, min_pnl=0.30, min_winrate=0.35, min_buys=15, min_profit_usd=500.0,
-                    period="30d", pump_only=True, log=print):
+                    period="30d", pump_only=True, cache=None, max_wallets=400, log=print):
     """Descubrimiento con GMGN (solo lectura): tokens en tendencia -> mejores traders de cada uno -> estadísticas de PnL a 30 días
-    en lote -> filtro. Devuelve [(wallet, stats)] ordenado por rentabilidad. Los filtros de aquí solo reducen el trabajo:
-    la decisión final la toman los filtros de deepwallet con el historial completo de Helius."""
+    una a una (con caché en disco) -> filtro. Devuelve [(wallet, stats)] ordenado por rentabilidad. Los filtros de aquí solo
+    reducen el trabajo: la decisión final la toman los filtros de deepwallet/gmgnwallet con el historial completo."""
+    import json as _json
+    import os as _os
+    stats_cache = {}
+    if cache and _os.path.exists(cache):
+        try:
+            stats_cache = _json.load(open(cache))
+        except Exception:
+            stats_cache = {}
     tokens = {}
     for iv in intervals:
         for ob in order_by:
             try:
-                for t in g.trending(iv, 100, ob)[:tokens_per_interval]:
+                for t in _patient(lambda: g.trending(iv, 100, ob), log=log)[:tokens_per_interval]:
                     if t["mint"] and (not pump_only or t["mint"].endswith("pump")):
                         tokens[t["mint"]] = t
             except Exception as e:
@@ -129,25 +152,34 @@ def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by
     pool = {}
     for i, mint in enumerate(tokens, 1):
         try:
-            for tr in g.top_traders(mint, 100, "profit"):
+            for tr in _patient(lambda: g.top_traders(mint, 100, "profit"), log=log):
                 if (tr["profit"] or 0) >= min_trader_profit_usd:
-                    pool.setdefault(tr["wallet"], []).append(mint)
+                    pool.setdefault(tr["wallet"], []).append((tr["profit"] or 0))
         except Exception as e:
             log(f"  top traders {mint[:8]}: {str(e)[:70]}")
         if i % 10 == 0:
             log(f"  [{i}/{len(tokens)}] wallets con ganancia hasta ahora: {len(pool)}")
-    wallets = list(pool)
-    log(f"wallets con ganancia >= ${min_trader_profit_usd:.0f} en algún token: {len(wallets)}")
+    # las que más ganaron en total (suma entre tokens) primero
+    wallets = sorted(pool, key=lambda w: -sum(pool[w]))[:max_wallets]
+    log(f"wallets con ganancia >= ${min_trader_profit_usd:.0f} en algún token: {len(pool)} (se miran {len(wallets)})")
     out = []
-    for i in range(0, len(wallets), 100):
-        try:
-            stats = g.wallet_stats(wallets[i:i + 100], period)
-        except Exception as e:
-            log(f"  estadísticas {i}: {str(e)[:70]}")
-            continue
-        for w, s in stats.items():
-            if ((s["pnl"] or 0) >= min_pnl and (s["winrate"] or 0) >= min_winrate and (s["buys"] or 0) >= min_buys
-                    and (s["realized_profit"] or 0) >= min_profit_usd):
-                out.append((w, dict(s, tokens=len(pool.get(w, [])))))
+    for i, w in enumerate(wallets, 1):
+        s = stats_cache.get(w)
+        if s is None:
+            try:
+                s = _patient(lambda: g.wallet_stats([w], period).get(w), log=log)
+            except Exception as e:
+                log(f"  estadísticas {w[:8]}: {str(e)[:70]}")
+                continue
+            stats_cache[w] = s
+            if cache and i % 10 == 0:
+                _json.dump(stats_cache, open(cache, "w"))
+            if i % 25 == 0:
+                log(f"  [{i}/{len(wallets)}] estadísticas leídas")
+        if s and ((s["pnl"] or 0) >= min_pnl and (s["winrate"] or 0) >= min_winrate and (s["buys"] or 0) >= min_buys
+                  and (s["realized_profit"] or 0) >= min_profit_usd):
+            out.append((w, dict(s, tokens=len(pool.get(w, [])))))
+    if cache:
+        _json.dump(stats_cache, open(cache, "w"))
     out.sort(key=lambda x: -(x[1]["pnl"] or 0))
     return out

@@ -7,7 +7,8 @@ Basado en la lectura del código fuente oficial (GMGNAI/gmgn-skills, licencia MI
     follow_wallet) exigen una clave privada de firma. Este cliente NO la conoce, NO la lee del
     entorno y NO incluye ninguna de esas rutas: `READ_ONLY` es una lista cerrada y cualquier otra
     ruta lanza error antes de salir a la red (hay una prueba que lo vigila).
-  - Límite del plan gratuito: cubo con goteo 5/5 (ritmo/capacidad); cada ruta tiene un «peso».
+  - Límite del plan gratuito: cubo con goteo, capacidad 5; cada ruta tiene un «peso». MEDIDO el 19-oct-2026 con las cabeceras
+    x-ratelimit-remaining: el cubo se vacía a ~1 unidad por segundo (no a 5), así que se usa ritmo 0,7 y capacidad 5.
     Si se supera, GMGN devuelve 429 y repetir durante el bloqueo lo alarga (+5 s cada vez, hasta
     5 min). Por eso: limitador local con pesos y NINGÚN reintento durante un bloqueo.
 
@@ -152,7 +153,13 @@ class Gmgn:
             raise GmgnError(f"{path}: respuesta no JSON")
         if j.get("code") != 0:
             self._raise_for(200, text, None, path)
-        return j.get("data")
+        d = j.get("data")
+        # algunas rutas (market/rank) devuelven el sobre dos veces: {"code":0,"data":{"code":0,"data":{...}}}
+        while isinstance(d, dict) and "code" in d and "data" in d and isinstance(d["data"], (dict, list)):
+            if d.get("code") not in (0, None):
+                self._raise_for(200, json.dumps(d), None, path)
+            d = d["data"]
+        return d
 
     def _raise_for(self, status, text, reset_hdr, path):
         try:
@@ -277,20 +284,25 @@ class Gmgn:
         return out
 
     def wallet_stats(self, wallets, period="30d"):
-        """Estadísticas de PnL de hasta 100 wallets en una llamada. Devuelve {wallet: {...}}."""
-        wallets = [w for w in wallets if w][:100]
-        if not wallets:
-            return {}
-        d = self._request("GET", "/v1/user/wallet_stats", {"chain": self.chain, "wallet_address": wallets, "period": period})
-        rows = d if isinstance(d, list) else [d] if isinstance(d, dict) else []
+        """Estadísticas de PnL por wallet. De UNA en UNA: con el plan gratuito, una llamada con 74 wallets agotó el cubo y GMGN
+        bloqueó la clave 5 minutos (RATE_LIMIT_BANNED), así que el coste parece contarse por wallet. Devuelve {wallet: {...}}."""
+        wallets = [w for w in wallets if w]
+        rows = []
+        for w in wallets:
+            d = self._request("GET", "/v1/user/wallet_stats", {"chain": self.chain, "wallet_address": w, "period": period})
+            rows.extend(d if isinstance(d, list) else [d] if isinstance(d, dict) else [])
         out = {}
         for r in rows:
             w = r.get("wallet_address") or r.get("address")
             if not w:
                 continue
-            out[w] = {"realized_profit": _num(r.get("realized_profit")), "unrealized_profit": _num(r.get("unrealized_profit")),
-                      "total_cost": _num(r.get("total_cost")), "pnl": _num(r.get("pnl")), "winrate": _num(r.get("winrate")),
-                      "buys": _num(r.get("buy_count")), "sells": _num(r.get("sell_count")),
+            ps = r.get("pnl_stat") or {}
+            out[w] = {"realized_profit": _num(r.get("realized_profit")), "pnl": _num(r.get("realized_profit_pnl")),
+                      "total_cost": _num(r.get("total_cost")), "winrate": _num(ps.get("winrate")),
+                      "buys": _num(r.get("buy")), "sells": _num(r.get("sell")), "tokens": _num(ps.get("token_num")),
+                      "gt5x": _num(ps.get("pnl_gt_5x_num")), "x2_5": _num(ps.get("pnl_2x_5x_num")),
+                      "lt_neg50": _num(ps.get("pnl_lt_nd5_num")), "avg_hold_s": _num(ps.get("avg_holding_period")),
+                      "sol_balance": _num(r.get("native_balance")), "last_ts": _num(r.get("last_timestamp")),
                       "tags": [sanitize_text(t, 20) for t in (_g(r, "common", "tags") or [])],
                       "created_at": _num(_g(r, "common", "created_at"))}
         return out

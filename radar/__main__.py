@@ -341,7 +341,8 @@ def cmd_gmgn_discover(cfg, a):
     if not g.available:
         raise SystemExit("Falta GMGN_API_KEY (clave de solo lectura) en .env o en el entorno.")
     cands = discover.gmgn_candidates(g, tokens_per_interval=a.tokens, min_pnl=a.min_pnl, min_profit_usd=a.min_profit,
-                                     min_buys=a.min_buys, log=lambda m: print(m, flush=True))
+                                     min_buys=a.min_buys, cache=a.out + ".stats.json", max_wallets=a.max_wallets,
+                                     log=lambda m: print(m, flush=True))
     print(f"candidatas tras el filtro de PnL a 30 días: {len(cands)}")
     with open(a.out, "w", encoding="utf-8") as f:
         f.write("# candidatas de GMGN (PnL 30 d); se verifican después con Helius (python -m radar deep)\n")
@@ -547,6 +548,7 @@ def main():
     gd.add_argument("--min-pnl", type=float, default=0.30)
     gd.add_argument("--min-profit", type=float, default=500.0)
     gd.add_argument("--min-buys", type=int, default=15)
+    gd.add_argument("--max-wallets", type=int, default=400)
     gd.add_argument("--out", default="data/gmgn_candidates.txt")
     ct = sub.add_parser("cotrade")
     ct.add_argument("--deep", required=True)

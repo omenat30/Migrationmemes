@@ -114,6 +114,7 @@ class EngineTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.cfg = load_config("/nonexistent.json")
+        self.cfg["keys"]["gmgn"] = ""  # las pruebas no deben usar la clave real del .env
         self.cfg["keys"]["helius"] = "x"
         self.cfg["track_score"] = 1
         self.store = Store(os.path.join(self.tmp.name, "e.sqlite"))

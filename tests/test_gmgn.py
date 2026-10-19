@@ -312,18 +312,20 @@ if __name__ == "__main__":
 
 
 class WalletDiscoveryRoutes(unittest.TestCase):
-    def test_wallet_stats_batches_and_normalizes(self):
-        g, net, _ = make({"/v1/user/wallet_stats": [
-            {"wallet_address": "W1", "realized_profit": "120.5", "total_cost": "200", "pnl": "0.6", "winrate": "0.55",
-             "buy_count": 40, "sell_count": 38, "common": {"tags": ["smart_money"], "created_at": 1700000000}},
-            {"wallet_address": "W2", "realized_profit": "-3"}]})
-        out = g.wallet_stats(["W1", "W2"], period="30d")
-        q = net.calls[0]["q"]
-        self.assertEqual(q["wallet_address"], ["W1", "W2"])
-        self.assertEqual(q["period"], ["30d"])
-        self.assertEqual(out["W1"]["pnl"], 0.6)
-        self.assertEqual(out["W1"]["tags"], ["smart_money"])
-        self.assertIsNone(out["W2"]["winrate"])  # campo ausente: None, nunca inventado
+    def test_wallet_stats_one_call_per_wallet_and_normalizes(self):
+        g, net, _ = make({"/v1/user/wallet_stats": {
+            "wallet_address": "W1", "realized_profit": "120.5", "realized_profit_pnl": 0.6, "total_cost": "200", "buy": 40, "sell": 38,
+            "pnl_stat": {"winrate": 0.55, "token_num": 30, "pnl_gt_5x_num": 2, "avg_holding_period": 1200},
+            "common": {"tags": ["smart_degen"], "created_at": 1700000000}}})
+        out = g.wallet_stats(["W1"], period="30d")
+        self.assertEqual(len(net.calls), 1)
+        self.assertEqual(net.calls[0]["q"]["wallet_address"], ["W1"])
+        self.assertEqual(net.calls[0]["q"]["period"], ["30d"])
+        self.assertEqual((out["W1"]["pnl"], out["W1"]["winrate"], out["W1"]["buys"], out["W1"]["gt5x"]), (0.6, 0.55, 40, 2))
+        self.assertEqual(out["W1"]["tags"], ["smart_degen"])
+        self.assertIsNone(out["W1"]["last_ts"])  # campo ausente: None, nunca inventado
+        g.wallet_stats(["A", "B", "C"])
+        self.assertEqual(len(net.calls), 4)  # de una en una, nunca en lote
 
     def test_top_traders_skips_pools_and_is_read_only(self):
         g, net, _ = make({"/v1/market/token_top_traders": {"list": [
@@ -336,3 +338,9 @@ class WalletDiscoveryRoutes(unittest.TestCase):
     def test_trending_reads_rank(self):
         g, net, _ = make({"/v1/market/rank": {"rank": [{"address": "M1", "symbol": "AAA", "volume": "5"}]}})
         self.assertEqual(g.trending()[0]["mint"], "M1")
+
+
+class DoubleEnvelope(unittest.TestCase):
+    def test_nested_envelope_is_unwrapped(self):
+        g, net, _ = make({"/v1/market/rank": {"code": 0, "data": {"rank": [{"address": "M1pump", "symbol": "A"}]}, "message": "ok"}})
+        self.assertEqual(g.trending()[0]["mint"], "M1pump")
