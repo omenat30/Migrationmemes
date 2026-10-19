@@ -142,6 +142,7 @@ class IdleTest(unittest.TestCase):
         old = _t.time() - 30 * 86400
         pos = [mk(0.9, ts=int(old) + i * 900) for i in range(30)] + [mk(2.0, ts=int(old) + 40000 + i * 900) for i in range(6)] + [mk(14.0, ts=int(old) + 90000), mk(13.0, ts=int(old) + 100000), mk(3.0, ts=int(old) + 110000)]
         cfg = _copy.deepcopy(_DEF)
+        cfg["copy"]["max_idle_days"] = 14  # el filtro ya no está activo por defecto
         m = metrics_for(pos)
         ok, why = deepwallet.passes(m, cfg)
         self.assertFalse(ok)

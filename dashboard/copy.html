@@ -103,6 +103,7 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
       <div class="fld"><span class="l">Filtros</span>
         <div class="seg" id="fpre" role="group" aria-label="Nivel de filtros">
           <button type="button" data-v="mid" aria-pressed="true">Por defecto</button>
+          <button type="button" data-v="act" aria-pressed="false">Con actividad reciente</button>
           <button type="button" data-v="strict" aria-pressed="false">Estrictos</button>
           <button type="button" data-v="loose" aria-pressed="false">Laxos</button></div></div>
     </div>
@@ -114,8 +115,8 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
         <div class="fld"><label for="f_ops">Operaciones mín.</label><input class="sm" type="number" id="f_ops" min="0" value="20"></div>
         <div class="fld"><label for="f_hits">Ops. ≥ +1000 % mín.</label><input class="sm" type="number" id="f_hits" min="0" value="0"></div>
         <div class="fld"><label for="f_roi">Rentabilidad mín. (%)</label><input class="sm" type="number" id="f_roi" min="0" value="30"></div>
-        <div class="fld"><label for="f_recent">Mín. ops cerradas en 14 días</label><input class="sm" type="number" id="f_recent" min="0" value="5"></div>
-        <div class="fld"><label for="f_idle">Máx. días sin operar</label><input class="sm" type="number" id="f_idle" min="0" value="14"></div>
+        <div class="fld"><label for="f_recent">Mín. ops cerradas en 14 días</label><input class="sm" type="number" id="f_recent" min="0" value="0"></div>
+        <div class="fld"><label for="f_idle">Máx. días sin operar</label><input class="sm" type="number" id="f_idle" min="0" value="0"></div>
         <div class="fld"><label for="f_top">Wallets a mostrar</label><input class="sm" type="number" id="f_top" min="1" max="50" value="10"></div>
         <div class="fld"><label for="a_fee">Comisión por lado (%)</label><input class="sm" type="number" id="a_fee" step="0.1" value="1"></div>
         <div class="fld"><label for="a_imp">Impacto por 1.000 USD (%)</label><input class="sm" type="number" id="a_imp" step="0.1" value="2"></div>
@@ -192,7 +193,7 @@ function fmtMin(s){return s==null?"—":(s<3600?(s/60).toFixed(0)+" min":(s/3600
 function fmtDate(ts){return new Date(ts*1000).toLocaleDateString("es-ES",{day:"2-digit",month:"short"})}
 function cls(x){return x==null?"":x>0?"pos":x<0?"neg":""}
 
-var state={size:100,delay:30,stop:true,mode:"hist",hold:10,short:35,ops:20,hits:0,roi:30,idle:14,recent:5,top:10,fee:1,imp:2,pen:null};
+var state={size:100,delay:30,stop:true,mode:"hist",hold:10,short:35,ops:20,hits:0,roi:30,idle:0,recent:0,top:10,fee:1,imp:2,pen:null};
 var WINDOW_DAYS=60,MIN_SPAN=30;
 var wallets=[],meta=null,connected=false;
 
@@ -283,7 +284,7 @@ function row(e,sol){
   var typ=(m.medCost!=null&&sol)?"$"+Math.round(m.medCost*sol).toLocaleString("es-ES"):"—";
   var big=(m.medCost!=null&&sol&&state.size>m.medCost*sol*3)?' <span class="tag warn" title="Tu tamaño es más de 3 veces el suyo: el impacto real puede ser mayor que el supuesto">tamaño alto</span>':"";
   var isNew=e.w.joined_ts&&(Date.now()/1000-e.w.joined_ts)<3*86400;
-  return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+(e.w.m&&e.w.m.source==="gmgn"?' <span class="tag" title="Historial leído de GMGN (en USD), no de la cadena">GMGN</span>':'')+'</td>'+
+  return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+(function(){var ref=((meta&&meta.ts)||Date.now()/1000),r14=e.m.pos.filter(function(p){return p[0]+(p[1]||0)>=ref-14*86400}).length;return r14<5?' <span class="tag warn" title="Menos de 5 operaciones cerradas en los últimos 14 días: la racha puede haberse parado">poca actividad reciente</span>':''})()+(e.w.m&&e.w.m.source==="gmgn"?' <span class="tag" title="Historial leído de GMGN (en USD), no de la cadena">GMGN</span>':'')+'</td>'+
    '<td class="num">'+m.n+'</td><td class="num">'+m.hits+'</td><td class="num">x'+(m.best==null?"—":m.best.toFixed(1))+'</td><td class="num '+cls(m.roi)+'">'+(m.roi==null?"—":(m.roi*100).toFixed(0)+" %")+'</td>'+'<td class="num">'+e.m.pos.filter(function(p){return p[0]+(p[1]||0)>=((meta&&meta.ts)||Date.now()/1000)-14*86400}).length+'</td><td class="num">'+(e.w.m&&e.w.m.span_days!=null?Math.round(e.w.m.span_days)+" d":"—")+'</td>'+'<td class="num">'+(e.w.m&&e.w.m.last_ts?Math.max(0,Math.round((Date.now()/1000-e.w.m.last_ts)/86400))+" d":"—")+'</td><td class="num">'+(e.w.m&&e.w.m.n_open!=null?e.w.m.n_open:"—")+'</td>'+
    '<td class="num">'+fmtMin(m.medHold)+'</td><td class="num">'+fmtPct(m.shortShare)+'</td>'+
    '<td class="num '+cls(m.pnlEx2)+'">'+(m.pnlEx2==null?"—":(m.pnlEx2>=0?"+":"−")+Math.abs(m.pnlEx2).toFixed(1)+" SOL")+'</td>'+
@@ -314,8 +315,8 @@ function chart(agg){
     '<circle cx="'+X(last[0]).toFixed(1)+'" cy="'+Y(last[1]).toFixed(1)+'" r="4" fill="'+col+'"/>'+ticks+'</svg>';
 }
 
-var FPRE={mid:{hold:10,short:35,ops:20,hits:0,roi:30},strict:{hold:30,short:25,ops:20,hits:1,roi:30},loose:{hold:2,short:55,ops:20,hits:0,roi:5}};
-function fpreCur(){for(var k in FPRE){var f=FPRE[k];if(f.hold===state.hold&&f.short===state.short&&f.ops===state.ops&&f.hits===state.hits&&f.roi===state.roi)return k}return ""}
+var FPRE={mid:{hold:10,short:35,ops:20,hits:0,roi:30,idle:0,recent:0},act:{hold:10,short:35,ops:20,hits:0,roi:30,idle:14,recent:5},strict:{hold:30,short:25,ops:20,hits:1,roi:30,idle:14,recent:5},loose:{hold:2,short:55,ops:20,hits:0,roi:5,idle:0,recent:0}};
+function fpreCur(){for(var k in FPRE){var f=FPRE[k];if(f.hold===state.hold&&f.short===state.short&&f.ops===state.ops&&f.hits===state.hits&&f.roi===state.roi&&f.idle===state.idle&&f.recent===state.recent)return k}return ""}
 function buildControls(){
   $("presets").innerHTML=[50,100,250,500,1000,2500].map(function(v){return '<button type="button" data-v="'+v+'" aria-pressed="false">'+v+'</button>'}).join("");
   $("delay").innerHTML=[30,60,120].map(function(v){return '<button type="button" data-v="'+v+'" aria-pressed="false">'+v+' s</button>'}).join("");
@@ -329,20 +330,20 @@ function sync(){
 function num(id,fb){var v=parseFloat($(id).value);return isFinite(v)&&v>=0?v:fb}
 function readInputs(){
   state.size=Math.max(1,num("size",100));state.stop=$("stop").checked;
-  state.hold=num("f_hold",30);state.short=num("f_short",25);state.ops=num("f_ops",20);state.hits=num("f_hits",0);state.roi=num("f_roi",30);state.idle=num("f_idle",14);state.recent=num("f_recent",5);state.top=Math.max(1,Math.min(50,num("f_top",10)));
+  state.hold=num("f_hold",30);state.short=num("f_short",25);state.ops=num("f_ops",20);state.hits=num("f_hits",0);state.roi=num("f_roi",30);state.idle=num("f_idle",0);state.recent=num("f_recent",0);state.top=Math.max(1,Math.min(50,num("f_top",10)));
   state.fee=num("a_fee",1);state.imp=num("a_imp",2);
   var p=parseFloat($("a_pen").value);state.pen=isFinite(p)?p/100:null;
 }
-function save(){try{localStorage.setItem("copy_state8",JSON.stringify(state))}catch(x){}}
+function save(){try{localStorage.setItem("copy_state9",JSON.stringify(state))}catch(x){}}
 buildControls();
 document.addEventListener("input",function(e){if(e.target.tagName==="INPUT"){readInputs();sync();render();save()}});
 $("presets").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;$("size").value=b.dataset.v;readInputs();sync();render();save()});
 $("delay").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.delay=+b.dataset.v;sync();render();save()});
 $("fpre").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;var f=FPRE[b.dataset.v];
-  state.hold=f.hold;state.short=f.short;state.ops=f.ops;state.hits=f.hits;state.roi=f.roi;$("f_roi").value=f.roi;
+  state.hold=f.hold;state.short=f.short;state.ops=f.ops;state.hits=f.hits;state.roi=f.roi;state.idle=f.idle;state.recent=f.recent;$("f_roi").value=f.roi;$("f_idle").value=f.idle;$("f_recent").value=f.recent;
   $("f_hold").value=f.hold;$("f_short").value=f.short;$("f_ops").value=f.ops;$("f_hits").value=f.hits;sync();render();save()});
 $("mode").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.mode=b.dataset.v;sync();render();save()});
-try{var sv=JSON.parse(localStorage.getItem("copy_state8")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
+try{var sv=JSON.parse(localStorage.getItem("copy_state9")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
   $("size").value=state.size;$("stop").checked=state.stop;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_roi").value=state.roi;$("f_idle").value=state.idle;$("f_recent").value=state.recent;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
 sync();render();
 
