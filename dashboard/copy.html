@@ -66,6 +66,7 @@ td.addr a{font-family:var(--f-mono)}
 .tag{font-size:11px;border-radius:4px;padding:1px 6px;background:var(--soft);color:var(--muted)}
 .tag.new{background:var(--accent-soft);color:var(--accent)}
 .tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.bad{background:color-mix(in srgb,var(--bad) 16%,var(--panel));color:var(--bad)}
 .note{background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);border-radius:8px;padding:10px 14px;color:var(--fg)}
 .note b{color:var(--warn)}
 ul.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -275,7 +276,7 @@ function render(){
     fail.slice(0,60).map(function(e){return '<tr class="fail"><td class="addr">'+addr(e.w.addr)+'</td><td class="num">'+e.m.n+'</td><td class="num">'+e.m.hits+'</td><td class="num">'+fmtMin(e.m.medHold)+'</td><td class="why">'+esc(e.why.join(" · "))+'</td></tr>'}).join("")+'</tbody>';
 
   var ch=(meta&&meta.changes)||[];
-  $("log").innerHTML=ch.length?ch.map(function(c){return '<li><span class="tag '+(c.type==="add"?"new":"warn")+'">'+(c.type==="add"?"entra":"sale")+'</span><span class="mono">'+esc(short(c.wallet||""))+'</span><span class="muted">'+esc(c.why||"")+'</span></li>'}).join(""):'<li class="muted">Sin cambios registrados.</li>';
+  $("log").innerHTML=ch.length?ch.map(function(c){return '<li><span class="tag '+(c.type==="add"?"new":c.type==="flow"?"bad":"warn")+'">'+({add:"entra",drop:"sale",flow:"capital",link:"enlace"}[c.type]||c.type)+'</span><span class="mono">'+esc(short(c.wallet||""))+'</span><span class="muted">'+esc(c.why||"")+'</span></li>'}).join(""):'<li class="muted">Sin cambios registrados.</li>';
   $("bias").innerHTML='<b>Cómo leer esto.</b> Las wallets se eligen mirando sus últimos 60 días, así que ese tramo sale inflado (sesgo del ganador). La prueba que cuenta es «Desde que entró», que sólo usa operaciones posteriores a la fecha en que la wallet entró en la lista. Mientras ese tramo sea corto, trata el Expected R de 60 días como un máximo y no como una expectativa. Es una simulación: no ejecuta compras ni ventas y no es consejo financiero.';
 }
 function addr(a){return '<a href="https://solscan.io/account/'+esc(a)+'" target="_blank" rel="noopener">'+esc(short(a))+'</a> <a class="muted" style="font-size:11px" href="https://gmgn.ai/sol/address/'+esc(a)+'" target="_blank" rel="noopener">gmgn</a>'}
@@ -284,7 +285,11 @@ function row(e,sol){
   var typ=(m.medCost!=null&&sol)?"$"+Math.round(m.medCost*sol).toLocaleString("es-ES"):"—";
   var big=(m.medCost!=null&&sol&&state.size>m.medCost*sol*3)?' <span class="tag warn" title="Tu tamaño es más de 3 veces el suyo: el impacto real puede ser mayor que el supuesto">tamaño alto</span>':"";
   var isNew=e.w.joined_ts&&(Date.now()/1000-e.w.joined_ts)<3*86400;
-  return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+(function(){var ref=((meta&&meta.ts)||Date.now()/1000),r14=e.m.pos.filter(function(p){return p[0]+(p[1]||0)>=ref-14*86400}).length;return r14<5?' <span class="tag warn" title="Menos de 5 operaciones cerradas en los últimos 14 días: la racha puede haberse parado">poca actividad reciente</span>':''})()+(e.w.m&&e.w.m.source==="gmgn"?' <span class="tag" title="Historial leído de GMGN (en USD), no de la cadena">GMGN</span>':'')+'</td>'+
+  return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+(function(){var ref=((meta&&meta.ts)||Date.now()/1000),r14=e.m.pos.filter(function(p){return p[0]+(p[1]||0)>=ref-14*86400}).length;return r14<5?' <span class="tag warn" title="Menos de 5 operaciones cerradas en los últimos 14 días: la racha puede haberse parado">poca actividad reciente</span>':''})()+(function(){var f=e.w.flows;if(!f)return '';var t='';
+    var tip=function(){var l=[];if(f.out14||f.in14)l.push('14 d: salen $'+f.out14+', entran $'+f.in14);(f.big||[]).slice(0,4).forEach(function(b){l.push(fmtDate(b[0])+' '+(b[1]==='out'?'sale':'entra')+' $'+b[3]+' '+b[4]+' ↔ '+short(b[2]))});if(f.balance_drop)l.push(f.balance_drop);return l.join(' | ')};
+    if(f.flag||f.balance_drop)t+=' <span class="tag bad" title="'+esc(tip())+'">movió capital</span>';
+    if((f.links&&f.links.length)||(f.shared&&f.shared.length))t+=' <span class="tag warn" title="'+esc('Enlazada con otras wallets de la lista: '+(f.links||[]).concat(f.shared||[]).map(short).join(', '))+'">enlazada</span>';
+    return t})()+(e.w.m&&e.w.m.source==="gmgn"?' <span class="tag" title="Historial leído de GMGN (en USD), no de la cadena">GMGN</span>':'')+'</td>'+
    '<td class="num">'+m.n+'</td><td class="num">'+m.hits+'</td><td class="num">x'+(m.best==null?"—":m.best.toFixed(1))+'</td><td class="num '+cls(m.roi)+'">'+(m.roi==null?"—":(m.roi*100).toFixed(0)+" %")+'</td>'+'<td class="num">'+e.m.pos.filter(function(p){return p[0]+(p[1]||0)>=((meta&&meta.ts)||Date.now()/1000)-14*86400}).length+'</td><td class="num">'+(e.w.m&&e.w.m.span_days!=null?Math.round(e.w.m.span_days)+" d":"—")+'</td>'+'<td class="num">'+(e.w.m&&e.w.m.last_ts?Math.max(0,Math.round((Date.now()/1000-e.w.m.last_ts)/86400))+" d":"—")+'</td><td class="num">'+(e.w.m&&e.w.m.n_open!=null?e.w.m.n_open:"—")+'</td>'+
    '<td class="num">'+fmtMin(m.medHold)+'</td><td class="num">'+fmtPct(m.shortShare)+'</td>'+
    '<td class="num '+cls(m.pnlEx2)+'">'+(m.pnlEx2==null?"—":(m.pnlEx2>=0?"+":"−")+Math.abs(m.pnlEx2).toFixed(1)+" SOL")+'</td>'+
