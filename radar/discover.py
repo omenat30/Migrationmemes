@@ -139,8 +139,16 @@ def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by
             stats_cache = _json.load(open(cache))
         except Exception:
             stats_cache = {}
-    tokens = {}
-    for iv in intervals:
+    pool_file = (cache + ".pool.json") if cache else None
+    pool, tokens = {}, {}
+    if pool_file and _os.path.exists(pool_file):
+        try:
+            saved = _json.load(open(pool_file))
+            tokens, pool = saved["tokens"], saved["pool"]
+            log(f"reutilizo la lista guardada: {len(tokens)} tokens, {len(pool)} wallets con ganancia")
+        except Exception:
+            pool, tokens = {}, {}
+    for iv in (intervals if not tokens else ()):
         for ob in order_by:
             try:
                 for t in _patient(lambda: g.trending(iv, 100, ob), log=log)[:tokens_per_interval]:
@@ -149,8 +157,7 @@ def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by
             except Exception as e:
                 log(f"  tendencia {iv}/{ob}: {str(e)[:70]}")
     log(f"tokens en tendencia a revisar: {len(tokens)}")
-    pool = {}
-    for i, mint in enumerate(tokens, 1):
+    for i, mint in enumerate(tokens if not pool else (), 1):
         try:
             for tr in _patient(lambda: g.top_traders(mint, 100, "profit"), log=log):
                 if (tr["profit"] or 0) >= min_trader_profit_usd:
@@ -159,6 +166,8 @@ def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by
             log(f"  top traders {mint[:8]}: {str(e)[:70]}")
         if i % 10 == 0:
             log(f"  [{i}/{len(tokens)}] wallets con ganancia hasta ahora: {len(pool)}")
+    if pool_file and pool and not _os.path.exists(pool_file):
+        _json.dump({"tokens": tokens, "pool": pool}, open(pool_file, "w"))
     # las que más ganaron en total (suma entre tokens) primero
     wallets = sorted((w for w in pool if w not in skip), key=lambda w: -sum(pool[w]))[:max_wallets]
     log(f"wallets con ganancia >= ${min_trader_profit_usd:.0f} en algún token: {len(pool)} (se miran {len(wallets)})")
