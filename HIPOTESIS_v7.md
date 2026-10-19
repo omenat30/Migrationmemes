@@ -106,3 +106,10 @@ Instrucciones: «al menos 30 días» de historial, periodo libre, al menos 5 car
 - Últimos 7 días: 0 compras y 0 ventas (la última compra fue el 12-oct). Antes, en la ventana de 30 días, 31 compras y 59 ventas: ha frenado mucho.
 - 22-sep, 01:53: sacó tokens PUMP por ~19.400 USD (6.197 y 13.241) a dos direcciones. Podría ser reparto entre wallets propias; no está verificado.
 - Nuevo filtro: «máx. días sin operar» (14 por defecto), y el panel muestra la última operación y las posiciones abiertas de cada wallet.
+
+## Historial mínimo de 15 días (19-oct-2026, a petición del usuario)
+Muchas cuentas rotan capital rápido, así que el mínimo de historial baja de 30 a 15 días. El resto de reglas no cambia (tenencia mediana >= 10 min, <= 35 % salidas en < 2 min,
+>= 20 operaciones cerradas, rentabilidad >= 30 %, ganancia positiva sin las 2 mejores). Con eso cumplen 5: BcKqw3ZNH8, DMTgKsvm44, 2GtmuqG31L, 6HJetMbdHB y 9PLvx6JvBm.
+El filtro de actividad reciente (>= 5 cerradas en 14 d, <= 14 días sin operar) queda opcional; la tabla marca «poca actividad reciente».
+Movimientos de capital (GMGN, primera pasada): sin enlaces entre las 12 wallets ni destinos comunes. Saldos actuales llamativos: DMTgKsvm44 0,86 SOL, 2GtmuqG31L 0,16 SOL,
+9PLvx6JvBm 2,0 SOL pese a ganancias grandes a 30 días: lo más probable es que la ganancia esté fuera de la wallet o en tokens, y pendiente de confirmar a dónde fue.
