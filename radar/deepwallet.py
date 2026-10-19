@@ -93,6 +93,8 @@ def metrics(wallet, positions, n_ops, ignored, span_days, cfg):
         "hits10": sum(1 for x in mults if x >= f["hit_mult"]),  # operaciones de +1000 % o más
         # última actividad real de la wallet, incluidas las posiciones aún abiertas (una compra sin vender también cuenta)
         "last_ts": max([p["entry_ts"] for p in positions] + [p["exit_ts"] for p in positions if p.get("exit_ts")], default=None),
+        # operaciones cerradas en los últimos `recent_days` días (historial reciente): exige que la racha siga viva
+        "closed_recent": sum(1 for p in closed if (p.get("exit_ts") or p["entry_ts"]) >= time.time() - f["recent_days"] * DAY),
         "ops_per_day": n_ops / max(span_days, 1e-9), "ignored_txs": ignored, "span_days": round(span_days, 1),
         "bot": (n_ops / max(span_days, 0.05)) > cfg["history"]["bot_trades_per_day"],
     }
@@ -111,6 +113,8 @@ def passes(m, cfg, flt=None):
         why.append("historial de solo %.0f días (< %d)" % (m["span_days"], f["min_span_days"]))
     if m.get("last_ts") and f.get("max_idle_days") and (time.time() - m["last_ts"]) / DAY > f["max_idle_days"]:
         why.append("sin operar desde hace %.0f días (> %d)" % ((time.time() - m["last_ts"]) / DAY, f["max_idle_days"]))
+    if m.get("closed_recent") is not None and m["closed_recent"] < f.get("min_recent_closed", 0):
+        why.append("solo %d operaciones cerradas en los últimos %d días (< %d)" % (m["closed_recent"], f["recent_days"], f["min_recent_closed"]))
     if m["n_closed"] < f["min_closed"]:
         why.append("pocas operaciones cerradas (%d < %d)" % (m["n_closed"], f["min_closed"]))
     if m["hits10"] < f["min_hits10"]:

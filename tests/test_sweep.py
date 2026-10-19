@@ -7,6 +7,7 @@ from radar.config import DEFAULTS as _DEF
 
 DEFAULTS = _copy.deepcopy(_DEF)
 DEFAULTS["copy"]["max_idle_days"] = 0  # los datos de prueba son de fechas fijas
+DEFAULTS["copy"]["min_recent_closed"] = 0
 
 
 def mk(mult, hold=3600, cost=1.0, ts=1_790_000_000):

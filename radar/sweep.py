@@ -32,7 +32,7 @@ def _pos_rows(positions):
 
 def _m_doc(m):
     keys = ("n_closed", "n_open", "cost_sol", "pnl_sol", "pnl_ex_top2", "roi", "win_rate", "median_hold_s", "short_hold_share",
-            "best_mult", "hits10", "ops_per_day", "bot", "span_days", "last_ts")
+            "best_mult", "hits10", "ops_per_day", "bot", "span_days", "last_ts", "closed_recent")
     d = {k: m.get(k) for k in keys}
     d["complete"] = bool((m.get("coverage") or {}).get("reached_start", True))
     d["source"] = (m.get("coverage") or {}).get("source", "helius")
