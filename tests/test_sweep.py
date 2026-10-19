@@ -100,3 +100,30 @@ class GmgnDiscoverTest(unittest.TestCase):
         out = discover.gmgn_candidates(g, intervals=("24h",), order_by=("volume",), log=lambda m: None)
         self.assertEqual([w for w, _ in out], ["W1"])
         self.assertEqual(g.stat_calls, [["W1", "W3"]])  # W2 no llega a la ganancia mínima por token
+
+
+class GmgnWalletTest(unittest.TestCase):
+    def test_positions_from_activity_and_metrics(self):
+        from radar import gmgnwallet
+        t0 = 1_790_000_000
+        rows = []
+        for i in range(25):  # 25 operaciones x2 y x0,5 alternas, tenencia de 20 min
+            tok = {"address": "M%d" % i}
+            rows.append({"event_type": "buy", "token": tok, "cost_usd": 100.0, "token_amount": 1000, "timestamp": t0 + i * 3600})
+            rows.append({"event_type": "sell", "token": tok, "cost_usd": 200.0 if i % 2 == 0 else 50.0, "token_amount": 1000, "timestamp": t0 + i * 3600 + 1200})
+        rows.append({"event_type": "transferIn", "token": {"address": "X"}, "cost_usd": 5, "token_amount": 5, "timestamp": t0})
+        pos, n, ign = gmgnwallet.positions_from_activity(rows, sol_usd=100.0)
+        self.assertEqual((len(pos), n, ign), (25, 50, 1))
+        self.assertAlmostEqual(pos[0]["cost"], 1.0)
+        m = deepwallet.metrics("W" * 40, pos, n, ign, 30.0, DEFAULTS)
+        self.assertEqual(m["n_closed"], 25)
+        self.assertAlmostEqual(m["median_hold_s"], 1200.0)
+        self.assertAlmostEqual(m["roi"], (13 * 2.0 + 12 * 0.5) / 25 - 1)
+
+    def test_open_position_is_not_counted(self):
+        from radar import gmgnwallet
+        rows = [{"event_type": "buy", "token": {"address": "A"}, "cost_usd": 100, "token_amount": 10, "timestamp": 1},
+                {"event_type": "sell", "token": {"address": "A"}, "cost_usd": 500, "token_amount": 5, "timestamp": 2}]
+        pos, _, _ = gmgnwallet.positions_from_activity(rows, 100.0)
+        self.assertFalse(pos[0]["closed"])
+        self.assertIsNone(pos[0]["mult"])

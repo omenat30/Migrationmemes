@@ -294,3 +294,11 @@ class Gmgn:
                       "tags": [sanitize_text(t, 20) for t in (_g(r, "common", "tags") or [])],
                       "created_at": _num(_g(r, "common", "created_at"))}
         return out
+
+    def activity_page(self, wallet, cursor=None, limit=100, types=("buy", "sell")):
+        """Una página de wallet_activity con su cursor `next`. Devuelve (filas, cursor_siguiente)."""
+        q = {"chain": self.chain, "wallet_address": wallet, "limit": limit, "type": list(types)}
+        if cursor:
+            q["cursor"] = cursor
+        d = self._request("GET", "/v1/user/wallet_activity", q) or {}
+        return (d.get("activities") or []), d.get("next")
