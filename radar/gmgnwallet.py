@@ -11,6 +11,7 @@ import time
 from collections import defaultdict
 
 from . import deepwallet
+from .discover import _patient
 
 DAY = 86400
 
@@ -21,7 +22,7 @@ def fetch_activity(g, wallet, days=60, max_pages=60, now=None, page_size=100, lo
     limit_ts = now - days * DAY
     rows, cursor, pages, reached = [], None, 0, False
     while pages < max_pages:
-        page, cursor = g.activity_page(wallet, cursor=cursor, limit=page_size)
+        page, cursor = _patient(lambda: g.activity_page(wallet, cursor=cursor, limit=page_size), log=lambda m: None)
         pages += 1
         rows.extend(page)
         if not page or not cursor:
