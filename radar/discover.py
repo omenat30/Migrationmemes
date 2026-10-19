@@ -126,7 +126,7 @@ def _patient(fn, tries=4, log=print):
 
 
 def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by=("volume", "smart_degen_count"),
-                    min_trader_profit_usd=300.0, min_pnl=0.30, min_winrate=0.35, min_buys=15, min_profit_usd=500.0,
+                    min_trader_profit_usd=300.0, min_pnl=0.30, min_winrate=0.0, min_buys=20, min_profit_usd=1000.0,
                     period="30d", pump_only=True, cache=None, max_wallets=400, skip=(), log=print):
     """Descubrimiento con GMGN (solo lectura): tokens en tendencia -> mejores traders de cada uno -> estadísticas de PnL a 30 días
     una a una (con caché en disco) -> filtro. Devuelve [(wallet, stats)] ordenado por rentabilidad. Los filtros de aquí solo
