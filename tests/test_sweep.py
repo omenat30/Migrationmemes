@@ -1,7 +1,12 @@
 import unittest
 
 from radar import deepwallet, sweep
-from radar.config import DEFAULTS
+import copy as _copy
+
+from radar.config import DEFAULTS as _DEF
+
+DEFAULTS = _copy.deepcopy(_DEF)
+DEFAULTS["copy"]["max_idle_days"] = 0  # los datos de prueba son de fechas fijas
 
 
 def mk(mult, hold=3600, cost=1.0, ts=1_790_000_000):
@@ -128,3 +133,19 @@ class GmgnWalletTest(unittest.TestCase):
         pos, _, _ = gmgnwallet.positions_from_activity(rows, 100.0)
         self.assertFalse(pos[0]["closed"])
         self.assertIsNone(pos[0]["mult"])
+
+
+class IdleTest(unittest.TestCase):
+    def test_wallet_idle_for_weeks_is_rejected_even_with_open_buys_counted(self):
+        import time as _t
+        old = _t.time() - 30 * 86400
+        pos = [mk(0.9, ts=int(old) + i * 900) for i in range(30)] + [mk(2.0, ts=int(old) + 40000 + i * 900) for i in range(6)] + [mk(14.0, ts=int(old) + 90000), mk(13.0, ts=int(old) + 100000), mk(3.0, ts=int(old) + 110000)]
+        cfg = _copy.deepcopy(_DEF)
+        m = metrics_for(pos)
+        ok, why = deepwallet.passes(m, cfg)
+        self.assertFalse(ok)
+        self.assertTrue(any("sin operar" in w for w in why))
+        # una compra abierta reciente cuenta como actividad
+        pos.append({"mint": "open", "closed": False, "cost": 1.0, "proceeds": 0.0, "entry_ts": int(_t.time()) - 3 * 86400, "exit_ts": None, "hold": None, "mult": None})
+        m2 = metrics_for(pos)
+        self.assertLess((_t.time() - m2["last_ts"]) / 86400, 4)

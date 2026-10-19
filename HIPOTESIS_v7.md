@@ -98,3 +98,11 @@ Instrucciones: «al menos 30 días» de historial, periodo libre, al menos 5 car
   - Casi: 2GtmuqG31L (+98 %, 29 días de historial en vez de 30), 2xUbYAVq1o (+119 %, 16 operaciones en vez de 20).
 - Aviso de método: BcKqw3ZNH8 sale +51 % con Helius (SOL, 60 d) y +23 % con GMGN (USD, 60 d). Tenencia parecida (24 vs 19 min). No sé cuál de las dos mediciones es más fiel;
   las wallets leídas con GMGN llevan la etiqueta GMGN en el panel.
+
+## Investigación de 6HJetMbdHB: ¿ha movido el dinero o no opera? (19-oct-2026, GMGN)
+- Saldo: **183,1 SOL** (~19.000 USD) siguen en la wallet. No ha retirado los fondos.
+- Sí opera en octubre, pero solo **compra**: BANDIT (1-oct, 2.494 USD), DEX y STONK (3-oct), Onwards, baton y PUMP (12-oct, ~2.000 USD cada una). Su última venta fue el 1-oct
+  (la de x21). Esas compras siguen abiertas: mi análisis solo guarda posiciones CERRADAS, por eso en octubre no se veía nada. Fallo corregido: las compras abiertas cuentan ya como actividad.
+- Últimos 7 días: 0 compras y 0 ventas (la última compra fue el 12-oct). Antes, en la ventana de 30 días, 31 compras y 59 ventas: ha frenado mucho.
+- 22-sep, 01:53: sacó tokens PUMP por ~19.400 USD (6.197 y 13.241) a dos direcciones. Podría ser reparto entre wallets propias; no está verificado.
+- Nuevo filtro: «máx. días sin operar» (14 por defecto), y el panel muestra la última operación y las posiciones abiertas de cada wallet.
