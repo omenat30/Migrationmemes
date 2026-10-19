@@ -151,3 +151,76 @@ class IdleTest(unittest.TestCase):
         pos.append({"mint": "open", "closed": False, "cost": 1.0, "proceeds": 0.0, "entry_ts": int(_t.time()) - 3 * 86400, "exit_ts": None, "hold": None, "mult": None})
         m2 = metrics_for(pos)
         self.assertLess((_t.time() - m2["last_ts"]) / 86400, 4)
+
+
+class FlowsTest(unittest.TestCase):
+    def test_summarize_detects_links_big_moves_and_flag(self):
+        from radar import flows
+        now = 1_792_000_000
+        rows = [
+            {"timestamp": now - 2 * 86400, "event_type": "transfer_out", "cost_usd": 13000, "from_address": "A", "to_address": "B", "token": {"symbol": "PUMP"}},
+            {"timestamp": now - 3 * 86400, "event_type": "transfer_out", "cost_usd": 6000, "from_address": "A", "to_address": "X", "token": {"symbol": "PUMP"}},
+            {"timestamp": now - 40 * 86400, "event_type": "transfer_in", "cost_usd": 300, "from_address": "Y", "to_address": "A", "token": {"symbol": "SOL"}},
+            {"timestamp": now - 1 * 86400, "event_type": "transfer_in", "cost_usd": 1.6, "from_address": "Z", "to_address": "A", "token": {"symbol": "PUMP"}},  # polvo
+        ]
+        s = flows.summarize("A", rows, tracked={"A", "B", "C"}, now=now)
+        self.assertEqual(s["out14"], 19000)
+        self.assertEqual(s["in14"], 0)
+        self.assertEqual(s["in60"], 300)
+        self.assertEqual(s["links"], ["B"])
+        self.assertTrue(s["flag"])
+        self.assertEqual(s["big"][0][2], "B")
+
+    def test_shared_destinations_and_balance_drop(self):
+        from radar import flows
+        pw = {"A": {"top": [["D", 5000, 0]]}, "B": {"top": [["D", 2000, 0], ["E", 10, 0]]}, "C": {"top": [["F", 9000, 0]]}}
+        self.assertEqual(flows.shared_destinations(pw), {"D": ["A", "B"]})
+        self.assertIsNotNone(flows.balance_drop([[1, 183.0], [2, 180.0]], 90.0))
+        self.assertIsNone(flows.balance_drop([[1, 183.0]], 170.0))
+        self.assertIsNone(flows.balance_drop([[1, 2.0]], 0.5))  # saldo pequeño: ruido
+
+
+class DailyTest(unittest.TestCase):
+    def test_daily_run_with_fake_gmgn(self):
+        import json as _json
+        import tempfile
+        import time as _t
+        from radar import daily
+        now = int(_t.time())
+
+        class FakeG:
+            def trending(self, iv, limit, ob):
+                return [{"mint": "TOK1pump"}]
+
+            def top_traders(self, mint, limit, order_by):
+                return [{"wallet": "NEW1", "profit": 5000.0}, {"wallet": "KNOWN", "profit": 9000.0}]
+
+            def wallet_stats(self, ws, period):
+                return {w: {"pnl": 0.8, "winrate": 0.6, "buys": 60, "realized_profit": 5000.0, "sol_balance": 100.0} for w in ws}
+
+            def activity_page(self, wallet, cursor=None, limit=100, types=("buy", "sell")):
+                if "transferIn" in types:
+                    return [{"timestamp": now - 86400, "event_type": "transfer_out", "cost_usd": 9000, "from_address": wallet,
+                             "to_address": "NEW1" if wallet != "NEW1" else "ELSEWHERE", "token": {"symbol": "PUMP"}}], None
+                rows = []
+                for i in range(30):  # 30 posiciones cerradas x2 con tenencia de 20 min, recientes
+                    t = now - (i + 1) * 3 * 3600
+                    tok = {"address": "M%d" % i}
+                    rows.append({"event_type": "buy", "token": tok, "cost_usd": 100.0, "token_amount": 10, "timestamp": t})
+                    rows.append({"event_type": "sell", "token": tok, "cost_usd": 200.0, "token_amount": 10, "timestamp": t + 1200})
+                return rows, None
+
+        cfg = _copy.deepcopy(_DEF)
+        cfg["copy"]["min_span_days"] = 0
+        prev = {"KNOWN": {"addr": "KNOWN", "status": "candidate", "joined_ts": None, "last_ts": 1, "m": {"roi": 0.5, "n_closed": 40}, "pos": []}}
+        with tempfile.TemporaryDirectory() as td:
+            out = td + "/o.json"
+            docs, meta = daily.run(cfg, FakeG(), prev, out, 100.0, verify_n=2, refresh_n=1, log=lambda m: None)
+            saved = _json.load(open(out))
+        self.assertIn("NEW1", docs)
+        self.assertIn("KNOWN", docs)  # refrescada
+        self.assertEqual(docs["NEW1"]["status"], "active")
+        self.assertIn("flows", docs["NEW1"])
+        self.assertTrue(any(c["type"] == "flow" for c in meta["changes"]))  # salió 9000 USD en 14 días
+        self.assertEqual(saved["meta"]["active"], meta["active"])
+        self.assertTrue(docs["NEW1"]["balhist"])

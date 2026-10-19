@@ -358,6 +358,64 @@ def cmd_gmgn_discover(cfg, a):
     print("guardado en", a.out)
 
 
+def cmd_flows(cfg, a):
+    """Movimientos de capital de las wallets del archivo: transferencias, enlaces entre ellas y saldo en SOL (GMGN, solo lectura)."""
+    import json as _json
+    from . import discover, flows
+    from .sources.gmgn import Gmgn
+    g = Gmgn(cfg)
+    if not g.available:
+        raise SystemExit("Falta GMGN_API_KEY.")
+    ws = []
+    for line in open(a.file, encoding="utf-8"):
+        t = line.split("#")[0].split()
+        if t and t[0] not in ws:
+            ws.append(t[0])
+    out = {}
+    for i, w in enumerate(ws, 1):
+        try:
+            rows = flows.fetch_transfers(g, w, days=a.days, max_pages=a.pages)
+            st = discover._patient(lambda: g.wallet_stats([w], "30d").get(w), log=lambda m: None) or {}
+        except Exception as e:
+            print(f"[{i}/{len(ws)}] {w[:8]}… error {str(e)[:70]}", flush=True)
+            continue
+        f = flows.summarize(w, rows, tracked=ws)
+        f["balance_sol"] = st.get("sol_balance")
+        out[w] = f
+        print(f"[{i}/{len(ws)}] {w[:8]}… salidas 14d ${f['out14']} · entradas 14d ${f['in14']} · enlaces {len(f['links'])} · saldo {f['balance_sol']} SOL" + (f" · ⚠ {f['flag']}" if f['flag'] else ""), flush=True)
+    shared = flows.shared_destinations(out)
+    _json.dump({"flows": out, "shared": shared}, open(a.out, "w"))
+    print(f"destinos comunes entre wallets de la lista: {len(shared)} · guardado en {a.out}")
+
+
+def cmd_daily(cfg, a):
+    """Barrido diario: nuevas wallets (GMGN), refresco, flujos de capital. Escribe a.out; la rutina lo sube al panel."""
+    from . import daily
+    from .sources.dexscreener import DexScreener
+    from .sources.gmgn import Gmgn
+    from .util import RateLimiter
+    g = Gmgn(cfg)
+    if not g.available:
+        raise SystemExit("Falta GMGN_API_KEY en el entorno (secreto del entorno de la rutina).")
+    try:
+        sol = DexScreener(cfg, RateLimiter(2)).sol_usd()
+    except Exception:
+        sol = 100.0
+    prev = daily.load_prev(a.prev_dir) if a.prev_dir else {}
+    print(f"estado anterior: {len(prev)} wallets", flush=True)
+    daily.run(cfg, g, prev, a.out, sol, new_tokens=a.tokens, new_wallets=a.new_wallets, verify_n=a.verify, refresh_n=a.refresh,
+              budget_s=a.budget_min * 60, log=lambda m: print(m, flush=True))
+
+
+def cmd_daily_batches(cfg, a):
+    """Prepara los lotes de escritura para la base del panel a partir del resultado del barrido diario."""
+    from . import daily
+    versions = json.load(open(a.versions)) if a.versions else {}
+    mv = versions.pop("__meta__", None)
+    b = daily.make_batches(a.out_file, versions, a.dir, meta_version=mv)
+    print(f"{sum(len(x) for x in b)} escrituras en {len(b)} lotes: {os.path.join(a.dir, 'batches.json')}")
+
+
 def cmd_sweep(cfg, a):
     """Barrido diario: analiza las wallets de los archivos de semillas y escribe los documentos para la base de datos del panel.
     --prev: JSON {dirección: {joined_ts, status}} con el estado actual del panel (lo lee la rutina desde la base de datos)."""
@@ -560,6 +618,23 @@ def main():
     gd.add_argument("--order-by", default="volume,smart_degen_count")
     gd.add_argument("--exclude", default="", help="archivos de wallets ya analizadas, separados por comas")
     gd.add_argument("--out", default="data/gmgn_candidates.txt")
+    dl = sub.add_parser("daily")
+    dl.add_argument("--prev-dir", default="")
+    dl.add_argument("--out", default="data/daily_out.json")
+    dl.add_argument("--tokens", type=int, default=20)
+    dl.add_argument("--new-wallets", type=int, default=120)
+    dl.add_argument("--verify", type=int, default=8)
+    dl.add_argument("--refresh", type=int, default=8)
+    dl.add_argument("--budget-min", type=int, default=150)
+    db_ = sub.add_parser("daily-batches")
+    db_.add_argument("--out-file", default="data/daily_out.json")
+    db_.add_argument("--versions", default="", help="JSON {addr: version, __meta__: version} de lo que ya hay en el panel")
+    db_.add_argument("--dir", default="data/daily_docs")
+    fl = sub.add_parser("flows")
+    fl.add_argument("file")
+    fl.add_argument("--days", type=int, default=60)
+    fl.add_argument("--pages", type=int, default=8)
+    fl.add_argument("--out", default="data/flows.json")
     ct = sub.add_parser("cotrade")
     ct.add_argument("--deep", required=True)
     ct.add_argument("--seeds", required=True)
@@ -591,7 +666,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "daily-batches": cmd_daily_batches}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
