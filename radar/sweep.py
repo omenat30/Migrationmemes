@@ -35,6 +35,7 @@ def _m_doc(m):
             "best_mult", "hits10", "ops_per_day", "bot", "span_days")
     d = {k: m.get(k) for k in keys}
     d["complete"] = bool((m.get("coverage") or {}).get("reached_start", True))
+    d["source"] = (m.get("coverage") or {}).get("source", "helius")
     return d
 
 

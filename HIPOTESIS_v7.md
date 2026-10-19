@@ -85,3 +85,16 @@ Instrucciones: «al menos 30 días» de historial, periodo libre, al menos 5 car
   Resultado: 12 co-operadoras con ≥ 2 tokens en común, 8 nuevas. Ninguna cumple los filtros: 5 son bots o scalpers (tenencia de 2–4 min) y las demás tienen < 30 días
   de historial o no son rentables. La más rentable, HAFfm2fPfp (+92 %, 11 operaciones de +1000 %), sale y entra en 2 min de mediana: otro arquetipo.
 - Tasa de acierto: 1 wallet como BcKqw3ZNH8 entre ~175 analizadas (~0,6 %). Para 5 harían falta ~800 candidatas.
+
+## Descubrimiento con GMGN (19-oct-2026)
+- Clave de solo lectura verificada. Límite real medido con las cabeceras `x-ratelimit-remaining`: el cubo (capacidad 5) se vacía a ~1 unidad por segundo,
+  no a 5 como dice la documentación. Una llamada de estadísticas con 74 wallets a la vez bloqueó la clave 5 min; desde entonces una wallet por llamada y espera ante bloqueo.
+- Búsqueda (no parte de las 74 del usuario): 49 tokens de pump.fun en tendencia (24 h y 6 h) -> sus mejores traders -> 3.150 wallets con ganancia >= 300 USD en alguno ->
+  estadísticas de PnL a 30 días de las 300 que más ganaron -> 15 con PnL >= 30 %, winrate >= 35 %, >= 20 compras y >= 1.000 USD de ganancia.
+- Verificación con el historial de GMGN (`deep --source gmgn`, mismos filtros que con Helius): **cumplen 3 de 15**.
+  - 6HJetMbdHB: 142 operaciones, +210 %, 6 de +1000 %, 48 min de tenencia mediana, 9 % de salidas en < 2 min. Historial parcial (tope de 1.600 filas).
+  - DMTgKsvm44: 32 operaciones, +79 %, 1 de +1000 %, 16 min.
+  - 9PLvx6JvBm: 28 operaciones, +50 %, tenencia mediana de ~22 h (más swing que scalping).
+  - Casi: 2GtmuqG31L (+98 %, 29 días de historial en vez de 30), 2xUbYAVq1o (+119 %, 16 operaciones en vez de 20).
+- Aviso de método: BcKqw3ZNH8 sale +51 % con Helius (SOL, 60 d) y +23 % con GMGN (USD, 60 d). Tenencia parecida (24 vs 19 min). No sé cuál de las dos mediciones es más fiel;
+  las wallets leídas con GMGN llevan la etiqueta GMGN en el panel.

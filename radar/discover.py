@@ -127,7 +127,7 @@ def _patient(fn, tries=4, log=print):
 
 def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by=("volume", "smart_degen_count"),
                     min_trader_profit_usd=300.0, min_pnl=0.30, min_winrate=0.35, min_buys=15, min_profit_usd=500.0,
-                    period="30d", pump_only=True, cache=None, max_wallets=400, log=print):
+                    period="30d", pump_only=True, cache=None, max_wallets=400, skip=(), log=print):
     """Descubrimiento con GMGN (solo lectura): tokens en tendencia -> mejores traders de cada uno -> estadísticas de PnL a 30 días
     una a una (con caché en disco) -> filtro. Devuelve [(wallet, stats)] ordenado por rentabilidad. Los filtros de aquí solo
     reducen el trabajo: la decisión final la toman los filtros de deepwallet/gmgnwallet con el historial completo."""
@@ -160,7 +160,7 @@ def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by
         if i % 10 == 0:
             log(f"  [{i}/{len(tokens)}] wallets con ganancia hasta ahora: {len(pool)}")
     # las que más ganaron en total (suma entre tokens) primero
-    wallets = sorted(pool, key=lambda w: -sum(pool[w]))[:max_wallets]
+    wallets = sorted((w for w in pool if w not in skip), key=lambda w: -sum(pool[w]))[:max_wallets]
     log(f"wallets con ganancia >= ${min_trader_profit_usd:.0f} en algún token: {len(pool)} (se miran {len(wallets)})")
     out = []
     for i, w in enumerate(wallets, 1):

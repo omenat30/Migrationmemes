@@ -278,7 +278,7 @@ function row(e,sol){
   var typ=(m.medCost!=null&&sol)?"$"+Math.round(m.medCost*sol).toLocaleString("es-ES"):"—";
   var big=(m.medCost!=null&&sol&&state.size>m.medCost*sol*3)?' <span class="tag warn" title="Tu tamaño es más de 3 veces el suyo: el impacto real puede ser mayor que el supuesto">tamaño alto</span>':"";
   var isNew=e.w.joined_ts&&(Date.now()/1000-e.w.joined_ts)<3*86400;
-  return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+'</td>'+
+  return '<tr><td class="addr">'+addr(e.w.addr)+(isNew?' <span class="tag new">nueva</span>':'')+(e.w.m&&e.w.m.complete===false?' <span class="tag warn" title="El límite de páginas no llegó a 60 días atrás: solo se ve el tramo más reciente">historial parcial</span>':'')+(e.w.m&&e.w.m.source==="gmgn"?' <span class="tag" title="Historial leído de GMGN (en USD), no de la cadena">GMGN</span>':'')+'</td>'+
    '<td class="num">'+m.n+'</td><td class="num">'+m.hits+'</td><td class="num">x'+(m.best==null?"—":m.best.toFixed(1))+'</td><td class="num '+cls(m.roi)+'">'+(m.roi==null?"—":(m.roi*100).toFixed(0)+" %")+'</td>'+
    '<td class="num">'+fmtMin(m.medHold)+'</td><td class="num">'+fmtPct(m.shortShare)+'</td>'+
    '<td class="num '+cls(m.pnlEx2)+'">'+(m.pnlEx2==null?"—":(m.pnlEx2>=0?"+":"−")+Math.abs(m.pnlEx2).toFixed(1)+" SOL")+'</td>'+
