@@ -75,3 +75,28 @@ class DustTest(unittest.TestCase):
         self.assertEqual(wh.derive_trade(W, tx), ("buy", "A", 2.0, 1000.0))
         tx["tokenTransfers"][1]["tokenAmount"] = 900
         self.assertIsNone(wh.derive_trade(W, tx))
+
+
+class GmgnDiscoverTest(unittest.TestCase):
+    def test_pipeline_filters_by_pnl_and_batches(self):
+        from radar import discover
+
+        class FakeG:
+            def __init__(self):
+                self.stat_calls = []
+
+            def trending(self, iv, limit, ob):
+                return [{"mint": "AAApump"}, {"mint": "BBB"}]  # el segundo no es de pump.fun
+
+            def top_traders(self, mint, limit, order_by):
+                return [{"wallet": "W1", "profit": 900.0}, {"wallet": "W2", "profit": 50.0}, {"wallet": "W3", "profit": 400.0}]
+
+            def wallet_stats(self, ws, period):
+                self.stat_calls.append(list(ws))
+                return {"W1": {"pnl": 0.5, "winrate": 0.6, "buys": 30, "realized_profit": 900.0},
+                        "W3": {"pnl": 0.1, "winrate": 0.6, "buys": 30, "realized_profit": 900.0}}
+
+        g = FakeG()
+        out = discover.gmgn_candidates(g, intervals=("24h",), order_by=("volume",), log=lambda m: None)
+        self.assertEqual([w for w, _ in out], ["W1"])
+        self.assertEqual(g.stat_calls, [["W1", "W3"]])  # W2 no llega a la ganancia mínima por token

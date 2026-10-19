@@ -37,6 +37,14 @@ READ_ONLY = {
     ("GET", "/v1/user/wallet_activity"): 3,
     ("GET", "/v1/user/created_tokens"): 2,
     ("POST", "/v1/trenches"): 2,
+    # descubrimiento de wallets (v7): todas son de clave de API sola, sin firma. Pesos de la documentación oficial
+    # del CLI (token_top_traders 5, market/rank 3, wallet_stats 3, smartmoney/kol 1); wallet_profits no figura: 3 por prudencia.
+    ("GET", "/v1/market/token_top_traders"): 5,
+    ("GET", "/v1/market/rank"): 3,
+    ("GET", "/v1/user/wallet_stats"): 3,
+    ("POST", "/v1/user/wallet_profits"): 3,
+    ("GET", "/v1/user/smartmoney"): 1,
+    ("GET", "/v1/user/kol"): 1,
 }
 
 
@@ -243,3 +251,46 @@ class Gmgn:
                  "smart_degen_count": _num(t.get("smart_degen_count")),
                  "renowned_count": _num(t.get("renowned_count"))}
                 for t in (d.get("pump") or []) if t.get("address")]
+
+    # ---------- descubrimiento de wallets (v7)
+    def trending(self, interval="24h", limit=100, order_by="volume"):
+        """Tokens en tendencia. La respuesta mantiene el sobre: los datos están en data.rank."""
+        d = self._request("GET", "/v1/market/rank", {"chain": self.chain, "interval": interval, "limit": limit,
+                                                     "order_by": order_by}) or {}
+        return [{"mint": t.get("address"), "symbol": sanitize_text(t.get("symbol"), 16),
+                 "mcap_usd": _num(t.get("market_cap")), "volume": _num(t.get("volume")),
+                 "ath_mcap": _num(t.get("history_highest_market_cap")), "created": _num(t.get("creation_timestamp"))}
+                for t in (d.get("rank") or []) if t.get("address")]
+
+    def top_traders(self, mint, limit=100, order_by="profit"):
+        """Wallets que más ganaron (o perdieron) en un token. Campos según la documentación oficial; los que falten salen None."""
+        d = self._request("GET", "/v1/market/token_top_traders",
+                          {"chain": self.chain, "address": mint, "limit": limit, "order_by": order_by, "direction": "desc"}) or {}
+        out = []
+        for h in (d.get("list") or []):
+            if not h.get("address") or h.get("addr_type") == 2:
+                continue
+            out.append({"wallet": h["address"], "profit": _num(h.get("profit")), "buy_usd": _num(h.get("buy_volume_cur")),
+                        "sell_usd": _num(h.get("sell_volume_cur")), "sold_pct": _num(h.get("sell_amount_percentage")),
+                        "buys": _num(h.get("buy_tx_count_cur")), "sells": _num(h.get("sell_tx_count_cur")),
+                        "tags": [sanitize_text(t, 20) for t in (h.get("tags") or [])]})
+        return out
+
+    def wallet_stats(self, wallets, period="30d"):
+        """Estadísticas de PnL de hasta 100 wallets en una llamada. Devuelve {wallet: {...}}."""
+        wallets = [w for w in wallets if w][:100]
+        if not wallets:
+            return {}
+        d = self._request("GET", "/v1/user/wallet_stats", {"chain": self.chain, "wallet_address": wallets, "period": period})
+        rows = d if isinstance(d, list) else [d] if isinstance(d, dict) else []
+        out = {}
+        for r in rows:
+            w = r.get("wallet_address") or r.get("address")
+            if not w:
+                continue
+            out[w] = {"realized_profit": _num(r.get("realized_profit")), "unrealized_profit": _num(r.get("unrealized_profit")),
+                      "total_cost": _num(r.get("total_cost")), "pnl": _num(r.get("pnl")), "winrate": _num(r.get("winrate")),
+                      "buys": _num(r.get("buy_count")), "sells": _num(r.get("sell_count")),
+                      "tags": [sanitize_text(t, 20) for t in (_g(r, "common", "tags") or [])],
+                      "created_at": _num(_g(r, "common", "created_at"))}
+        return out

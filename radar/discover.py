@@ -108,3 +108,46 @@ def cotraders(per_token_results, seed_wallets, min_tokens=3, min_mult=1.3, min_p
     out = [(w, v) for w, v in wins.items() if len(v) >= min_tokens]
     out.sort(key=lambda x: -len(x[1]))
     return out
+
+
+def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by=("volume", "smart_degen_count"),
+                    min_trader_profit_usd=300.0, min_pnl=0.30, min_winrate=0.35, min_buys=15, min_profit_usd=500.0,
+                    period="30d", pump_only=True, log=print):
+    """Descubrimiento con GMGN (solo lectura): tokens en tendencia -> mejores traders de cada uno -> estadísticas de PnL a 30 días
+    en lote -> filtro. Devuelve [(wallet, stats)] ordenado por rentabilidad. Los filtros de aquí solo reducen el trabajo:
+    la decisión final la toman los filtros de deepwallet con el historial completo de Helius."""
+    tokens = {}
+    for iv in intervals:
+        for ob in order_by:
+            try:
+                for t in g.trending(iv, 100, ob)[:tokens_per_interval]:
+                    if t["mint"] and (not pump_only or t["mint"].endswith("pump")):
+                        tokens[t["mint"]] = t
+            except Exception as e:
+                log(f"  tendencia {iv}/{ob}: {str(e)[:70]}")
+    log(f"tokens en tendencia a revisar: {len(tokens)}")
+    pool = {}
+    for i, mint in enumerate(tokens, 1):
+        try:
+            for tr in g.top_traders(mint, 100, "profit"):
+                if (tr["profit"] or 0) >= min_trader_profit_usd:
+                    pool.setdefault(tr["wallet"], []).append(mint)
+        except Exception as e:
+            log(f"  top traders {mint[:8]}: {str(e)[:70]}")
+        if i % 10 == 0:
+            log(f"  [{i}/{len(tokens)}] wallets con ganancia hasta ahora: {len(pool)}")
+    wallets = list(pool)
+    log(f"wallets con ganancia >= ${min_trader_profit_usd:.0f} en algún token: {len(wallets)}")
+    out = []
+    for i in range(0, len(wallets), 100):
+        try:
+            stats = g.wallet_stats(wallets[i:i + 100], period)
+        except Exception as e:
+            log(f"  estadísticas {i}: {str(e)[:70]}")
+            continue
+        for w, s in stats.items():
+            if ((s["pnl"] or 0) >= min_pnl and (s["winrate"] or 0) >= min_winrate and (s["buys"] or 0) >= min_buys
+                    and (s["realized_profit"] or 0) >= min_profit_usd):
+                out.append((w, dict(s, tokens=len(pool.get(w, [])))))
+    out.sort(key=lambda x: -(x[1]["pnl"] or 0))
+    return out

@@ -323,6 +323,23 @@ def cmd_cotrade(cfg, a):
     print("guardado en", a.out)
 
 
+def cmd_gmgn_discover(cfg, a):
+    """Candidatas desde GMGN (solo lectura): mejores traders de tokens en tendencia filtrados por su PnL a 30 días."""
+    from . import discover
+    from .sources.gmgn import Gmgn
+    g = Gmgn(cfg)
+    if not g.available:
+        raise SystemExit("Falta GMGN_API_KEY (clave de solo lectura) en .env o en el entorno.")
+    cands = discover.gmgn_candidates(g, tokens_per_interval=a.tokens, min_pnl=a.min_pnl, min_profit_usd=a.min_profit,
+                                     min_buys=a.min_buys, log=lambda m: print(m, flush=True))
+    print(f"candidatas tras el filtro de PnL a 30 días: {len(cands)}")
+    with open(a.out, "w", encoding="utf-8") as f:
+        f.write("# candidatas de GMGN (PnL 30 d); se verifican después con Helius (python -m radar deep)\n")
+        for w, st in cands:
+            f.write(f"{w}  # pnl {st['pnl']:.2f} · ganancia ${st['realized_profit']:.0f} · winrate {(st['winrate'] or 0)*100:.0f}% · {int(st['buys'] or 0)} compras · {st['tokens']} tokens\n")
+    print("guardado en", a.out)
+
+
 def cmd_sweep(cfg, a):
     """Barrido diario: analiza las wallets de los archivos de semillas y escribe los documentos para la base de datos del panel.
     --prev: JSON {dirección: {joined_ts, status}} con el estado actual del panel (lo lee la rutina desde la base de datos)."""
@@ -514,6 +531,12 @@ def main():
     ds.add_argument("--mode", choices=["curve", "pool"], default="pool")
     ds.add_argument("--min-proceeds", type=float, default=1.0)
     ds.add_argument("--out", default="data/candidates.txt")
+    gd = sub.add_parser("gmgn-discover")
+    gd.add_argument("--tokens", type=int, default=40)
+    gd.add_argument("--min-pnl", type=float, default=0.30)
+    gd.add_argument("--min-profit", type=float, default=500.0)
+    gd.add_argument("--min-buys", type=int, default=15)
+    gd.add_argument("--out", default="data/gmgn_candidates.txt")
     ct = sub.add_parser("cotrade")
     ct.add_argument("--deep", required=True)
     ct.add_argument("--seeds", required=True)
@@ -545,7 +568,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
