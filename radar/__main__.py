@@ -187,14 +187,14 @@ def cmd_deep(cfg, a):
         if not g.available:
             raise SystemExit("Falta GMGN_API_KEY (clave de solo lectura) en .env o en el entorno.")
         sol_now = DexScreener(cfg, RateLimiter(2)).sol_usd()
-        gmgn_an = lambda w: gmgnwallet.analyze(g, w, cfg, sol_now, days=cfg["copy"]["days"], max_pages=a.pages)
+        gmgn_an = lambda w: gmgnwallet.analyze(g, w, cfg, sol_now, days=a.days or cfg["copy"]["days"], max_pages=a.pages)
     lock = threading.Lock()
     counter = [0]
 
     def work(w):
         t0 = time.time()
         try:
-            m, pos = (gmgn_an(w) if a.source == "gmgn" else deepwallet.analyze(h, w, cfg, days=cfg["copy"]["days"], max_pages=a.pages))
+            m, pos = (gmgn_an(w) if a.source == "gmgn" else deepwallet.analyze(h, w, cfg, days=a.days or cfg["copy"]["days"], max_pages=a.pages))
         except Exception as e:
             with lock:
                 counter[0] += 1
@@ -598,6 +598,7 @@ def main():
     dp.add_argument("--out", default="data/deep.json")
     dp.add_argument("--workers", type=int, default=1)
     dp.add_argument("--source", choices=["helius", "gmgn"], default="helius")
+    dp.add_argument("--days", type=int, default=0, help="ventana de análisis (0 = la de la configuración); con GMGN cada página son solo 20 filas")
     ds = sub.add_parser("discover")
     ds.add_argument("--pages", type=int, default=12)
     ds.add_argument("--tokens", type=int, default=80)
