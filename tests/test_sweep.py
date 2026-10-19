@@ -99,8 +99,8 @@ class GmgnDiscoverTest(unittest.TestCase):
 
             def wallet_stats(self, ws, period):
                 self.stat_calls.append(list(ws))
-                allst = {"W1": {"pnl": 0.5, "winrate": 0.6, "buys": 30, "realized_profit": 900.0},
-                         "W3": {"pnl": 0.1, "winrate": 0.6, "buys": 30, "realized_profit": 900.0}}
+                allst = {"W1": {"pnl": 0.5, "winrate": 0.6, "buys": 30, "realized_profit": 1500.0},
+                         "W3": {"pnl": 0.1, "winrate": 0.6, "buys": 30, "realized_profit": 1500.0}}
                 return {w: allst[w] for w in ws if w in allst}
 
         g = FakeG()
