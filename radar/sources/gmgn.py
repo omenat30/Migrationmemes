@@ -269,10 +269,13 @@ class Gmgn:
                  "ath_mcap": _num(t.get("history_highest_market_cap")), "created": _num(t.get("creation_timestamp"))}
                 for t in (d.get("rank") or []) if t.get("address")]
 
-    def top_traders(self, mint, limit=100, order_by="profit"):
-        """Wallets que más ganaron (o perdieron) en un token. Campos según la documentación oficial; los que falten salen None."""
-        d = self._request("GET", "/v1/market/token_top_traders",
-                          {"chain": self.chain, "address": mint, "limit": limit, "order_by": order_by, "direction": "desc"}) or {}
+    def top_traders(self, mint, limit=100, order_by="profit", tag=None):
+        """Wallets que más ganaron (o perdieron) en un token. `tag`: smart_degen (smart money) o renowned (KOL). Campos según la
+        documentación oficial; los que falten salen None."""
+        q = {"chain": self.chain, "address": mint, "limit": limit, "order_by": order_by, "direction": "desc"}
+        if tag:
+            q["tag"] = tag
+        d = self._request("GET", "/v1/market/token_top_traders", q) or {}
         out = []
         for h in (d.get("list") or []):
             if not h.get("address") or h.get("addr_type") == 2:
