@@ -224,3 +224,20 @@ class DailyTest(unittest.TestCase):
         self.assertTrue(any(c["type"] == "flow" for c in meta["changes"]))  # salió 9000 USD en 14 días
         self.assertEqual(saved["meta"]["active"], meta["active"])
         self.assertTrue(docs["NEW1"]["balhist"])
+
+
+class MigrantsTest(unittest.TestCase):
+    def test_fast_winners_and_group(self):
+        from radar import migrants
+        rows = [
+            {"wallet": "A", "buy_usd": 500, "sell_usd": 6000, "start": 1000, "end": 2000},        # x12 en 1000 s: acierto
+            {"wallet": "B", "buy_usd": 500, "sell_usd": 6000, "start": 1000, "end": 9000},        # demasiado lento
+            {"wallet": "C", "buy_usd": 0, "sell_usd": 9000, "start": 1000, "end": 1500},          # recibido por transferencia
+            {"wallet": "D", "buy_usd": 500, "sell_usd": 1000, "start": 1000, "end": 1500},        # solo x2
+            {"wallet": "E", "buy_usd": 500, "sell_usd": 6000, "start": 1000, "end": 1005},        # 5 s: bot
+        ]
+        w = migrants.fast_winners(rows)
+        self.assertEqual([x["wallet"] for x in w], ["A"])
+        per = {"m1": {"winners": w}, "m2": {"winners": w}, "m3": {"winners": w + [{"wallet": "Z", "mult": 9, "hold": 100, "buy": 200}]}}
+        g = migrants.group(per, min_tokens=3)
+        self.assertEqual([a for a, _ in g], ["A"])

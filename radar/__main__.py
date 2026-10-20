@@ -416,6 +416,68 @@ def cmd_daily_batches(cfg, a):
     print(f"{sum(len(x) for x in b)} escrituras en {len(b)} lotes: {os.path.join(a.dir, 'batches.json')}")
 
 
+def cmd_migrants(cfg, a):
+    """Tokens ya migrados de pump.fun (histórico): ¿qué wallets repiten aciertos de x5+ en menos de 30 min? (GMGN, solo lectura)."""
+    import json as _json
+    from . import discover, history, migrants
+    from .sources.gmgn import Gmgn
+    from .sources.pumpfun import PumpFun
+    from .util import RateLimiter, http_json
+    g = Gmgn(cfg)
+    if not g.available:
+        raise SystemExit("Falta GMGN_API_KEY.")
+    pf = PumpFun(cfg, RateLimiter(5))
+    dlim = RateLimiter(3)
+    toks, seen = [], set()
+    for page in range(a.pages):
+        q = f"/coins?offset={page * 50}&limit=50&sort={a.sort}&order=DESC&includeNsfw=true&complete=true"
+        try:
+            r = http_json(pf.base + q, limiter=pf.limiter)
+        except Exception as e:
+            print("lista:", str(e)[:60])
+            break
+        r = r if isinstance(r, list) else r.get("coins", [])
+        for c in r:
+            m = c.get("mint")
+            if m and m.endswith("pump") and m not in seen:
+                seen.add(m)
+                toks.append((m, (c.get("created_timestamp") or 0) / 1000.0, c.get("symbol") or ""))
+        if len(r) < 50:
+            break
+    toks = toks[a.skip: a.skip + a.max_tokens]
+    old = min((t for _, t, _ in toks if t), default=0)
+    print(f"tokens migrados a leer: {len(toks)} · creados entre {time.strftime('%d-%m', time.gmtime(old))} y {time.strftime('%d-%m', time.gmtime(max(t for _, t, _ in toks)))}" if toks else "sin tokens", flush=True)
+    data = {}
+    if os.path.exists(a.out):
+        try:
+            data = _json.load(open(a.out))
+        except Exception:
+            data = {}
+    for i, (m, created, sym) in enumerate(toks, 1):
+        if m in data:
+            continue
+        try:
+            d = history.dex_pair(m, dlim) or {}
+            rows = discover._patient(lambda: g.top_traders(m, 100, "profit"), log=lambda x: None)
+        except Exception as e:
+            print(f"  {m[:8]} error {str(e)[:60]}", flush=True)
+            continue
+        win = migrants.fast_winners(rows, min_mult=a.min_mult, max_hold_s=a.max_hold)
+        pair_ts = d.get("created") or None
+        for w in win:
+            w["rel"] = int(w["start"] - pair_ts) if pair_ts else None  # segundos desde la migración (negativo = antes)
+        data[m] = {"sym": sym, "created": created, "pair_ts": pair_ts, "n": len(rows), "winners": win}
+        if i % 5 == 0:
+            _json.dump(data, open(a.out, "w"))
+            n_w = sum(len(v["winners"]) for v in data.values())
+            print(f"[{i}/{len(toks)}] aciertos rápidos acumulados: {n_w} en {len(data)} tokens", flush=True)
+    _json.dump(data, open(a.out, "w"))
+    grp = migrants.group(data, min_tokens=a.min_tokens)
+    print(f"wallets con >= {a.min_tokens} aciertos rápidos: {len(grp)}", flush=True)
+    for w, v in grp[:30]:
+        print(f"  {w[:8]}… {len(v)} tokens · mult medio x{sum(x[1] for x in v) / len(v):.0f} · tenencia media {sum(x[2] for x in v) / len(v) / 60:.0f} min", flush=True)
+
+
 def cmd_sweep(cfg, a):
     """Barrido diario: analiza las wallets de los archivos de semillas y escribe los documentos para la base de datos del panel.
     --prev: JSON {dirección: {joined_ts, status}} con el estado actual del panel (lo lee la rutina desde la base de datos)."""
@@ -636,6 +698,15 @@ def main():
     fl.add_argument("--days", type=int, default=60)
     fl.add_argument("--pages", type=int, default=8)
     fl.add_argument("--out", default="data/flows.json")
+    mg = sub.add_parser("migrants")
+    mg.add_argument("--pages", type=int, default=8)
+    mg.add_argument("--max-tokens", type=int, default=400)
+    mg.add_argument("--skip", type=int, default=0)
+    mg.add_argument("--sort", default="market_cap", help="market_cap (los que más subieron) o created_timestamp (los más recientes)")
+    mg.add_argument("--min-mult", type=float, default=5.0)
+    mg.add_argument("--max-hold", type=int, default=1800)
+    mg.add_argument("--min-tokens", type=int, default=3)
+    mg.add_argument("--out", default="data/migrants.json")
     ct = sub.add_parser("cotrade")
     ct.add_argument("--deep", required=True)
     ct.add_argument("--seeds", required=True)
@@ -667,7 +738,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "daily-batches": cmd_daily_batches}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "migrants": cmd_migrants, "daily-batches": cmd_daily_batches}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

@@ -280,7 +280,9 @@ class Gmgn:
         for h in (d.get("list") or []):
             if not h.get("address") or h.get("addr_type") == 2:
                 continue
-            out.append({"wallet": h["address"], "profit": _num(h.get("profit")), "buy_usd": _num(h.get("buy_volume_cur")),
+            out.append({"wallet": h["address"], "start": _num(h.get("start_holding_at")), "end": _num(h.get("end_holding_at")),
+                        "transfer_in": _bool(h.get("transfer_in")), "total_cost": _num(h.get("total_cost")),
+                        "profit": _num(h.get("profit")), "buy_usd": _num(h.get("buy_volume_cur")),
                         "sell_usd": _num(h.get("sell_volume_cur")), "sold_pct": _num(h.get("sell_amount_percentage")),
                         "buys": _num(h.get("buy_tx_count_cur")), "sells": _num(h.get("sell_tx_count_cur")),
                         "tags": [sanitize_text(t, 20) for t in (h.get("tags") or [])]})
