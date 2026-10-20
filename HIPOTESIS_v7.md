@@ -147,3 +147,20 @@ Cada operación cerrada se clasifica: **cruce** (entra antes de migrar y termina
 - Las demás ganadoras lo son entrando **tras migrar**: 6HJetMbdHB (+296 %), 3bzaJd5yZG (+195 %), DxM1hfY8FQ (+111 %), 2GtmuqG31L (+100 %), DMTgKsvm44 (+85 %), GAsnqm4XkN (+66 %), AqSUfx6Y2e (+52 %), 5LLTYLm8se (+47 %).
 - El panel muestra tres columnas añadidas (ROI y n): «Entra en curva», «Entra tras migrar» y «Cruces (sesgado)». Se guardan en `wallets/{addr}.mig`. Nada se ha quitado.
 - Pendiente: `migrants` sobre 447 tokens con filas por wallet (`rows`) para ver quién entra antes de migrar de forma repetida; el run lleva 85/447 al escribir esto (23 aciertos rápidos, ninguna wallet repetida todavía).
+
+## Corrección: la hora de migración de DexScreener ya no sirve; se mide por mcap de entrada (20-oct-2026)
+- DexScreener da ahora al pool de PumpSwap la fecha de **creación** del token (comprobado: coincide al segundo en 173 de 178 tokens migrados).
+  La clasificación cruce/previa/tras de la sección anterior estaba contaminada: en esos tokens todo salía «tras migrar».
+- Nuevo criterio (`crossing.band`): mcap medio de entrada en SOL = coste / tokens comprados x 1.000 M. La curva estándar de pump.fun se completa
+  a **~383 SOL** (mediana de las reservas virtuales de 50 tokens completos; ~40k USD a 104 USD/SOL). Franjas: temprana < 0,35 G, media 0,35-0,6 G,
+  **a punto de migrar 0,6-1 G (~24k-40k USD)**, **recién migrado 1-3 G (~40k-120k USD)**, tarde > 3 G. Con historial de GMGN el coste es USD / SOL actual (aproximado).
+- Copia simulada (100 USD, 30 s, +9 %, comisión 1 %, impacto 2 %/1.000 USD, stop -60 %) y las ventas en <= 30 s cuentan sin ventaja (ya ha vendido cuando copias).
+- Cumplen el criterio «cerca de migrar» (>= 15 entradas en la franja, R >= 0,3, positivo sin sus 2 mejores y en las dos mitades, <= 35 % de ventas en 30 s):
+  - **DA9nTGVx7N**: 328 entradas, R +1,07 (+0,95 sin sus 2 mejores), mitades +1,03/+1,10, 59 % de acierto, 4 min. Bot (decenas de operaciones al día). Solo 10 días de historial (GMGN).
+  - **61NP6BpRMt**: 32 entradas, R +1,77 (+1,45), 88 % de acierto, 14 min. Bot; 5 días de entradas en la franja.
+  - **6HJetMbdHB**: 77 entradas, R +2,95 (+0,73), mitades +0,19/+5,64 (la segunda mitad pesa mucho).
+- **HAFfm2fPfp descartada a mano** (petición del usuario): el 39 % de sus operaciones compra por debajo de 4k USD de mcap y vende en ~2 s: dumpea a quien la copia.
+- **Clusters** (misma persona: compran los mismos tokens con <= 10 s de diferencia en cientos de tokens): CyJLNEWdAu + DypmN13zYi (1.100 de 1.105 tokens comunes);
+  4bmsYnh4pK + AZ1SxJ6uXr + HHL2FnwJJi (~350 tokens); 3jUDDXW25D + 7Eav6kHmzA (293); 3RFG23xp9i + 71YztbFnNy (25).
+- Panel: filtro de mcap de entrada mín./máx. (como el de GMGN al copiar), preset «Cerca de migrar» (24k-120k USD, R >= 0,3, incluye bots), casilla «Incluir bots»,
+  columna «Cerca de migrar (R copiando)» con todas las franjas al pasar el ratón y etiqueta «cluster». Cada operación guardada lleva su mcap de entrada (5.º campo).
