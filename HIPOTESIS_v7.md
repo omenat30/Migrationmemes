@@ -135,3 +135,15 @@ Método (`python -m radar migrants`): para cada token migrado (lista de pump.fun
 «aciertos rápidos»: compra real >= 150 USD, cobrado >= x5, posición abierta <= 30 min (marcas de primer y último movimiento). Luego se agrupan por wallet.
 Primeros 95 tokens (los de mayor market cap desde junio): 44 aciertos rápidos de 44 wallets distintas, **ninguna repite**; 19 de 43 entraron antes de migrar y 9 en los 30 min posteriores.
 Límite: el top 100 por ganancia no es todo el que operó; los aciertos pequeños no salen.
+
+## Entrar antes de migrar y vender después: ¿existe un patrón copiable? (20-oct-2026)
+Petición: mirar wallets que entran antes de la migración y salen tras ella (`radar/crossing.py`). Hora de migración = creación del pool en DexScreener (3.629 de 23.025 tokens con pool conocido).
+Cada operación cerrada se clasifica: **cruce** (entra antes de migrar y termina de vender después), **previa** (entra y sale antes), **tras** (entra con el pool ya creado) y **curva** (sin pool conocido).
+- Sesgo de selección: los cruces salen altísimos (HAFfm2fP +840 %, 3jUDDXW2 +347 %, HD37a8wp +321 %, 7Eav6kHm +318 %, DypmN13z +305 %, en las ~36 wallets con >= 5 cruces) porque solo se ven tokens que ya sabemos que migraron.
+  Hace falta saberlo ANTES de comprar, y eso no se puede copiar. La cifra justa es **entra en curva** (cruce + previa + curva): incluye los tokens que nunca migraron.
+- Con la cifra justa, la mayoría desaparece: en 4gG4V4iPrw (2.706 entradas en curva) el ROI es +9 %, en DypmN13zYi +2 %, en CyJLNEWdAu +6 %, aunque sus cruces rindan +240-300 %.
+- Solo dos wallets cumplen filtros y tienen ROI justo claro entrando en curva: **AcGLjWVZKR** (80 op., +47 %, 96 % de acierto, tenencia mediana 23 min, Expected R +0,57, +0,52 sin sus 2 mejores)
+  y **DA9nTGVx7N** (2.200 op., +35 %, tenencia 4 min; con GMGN la cobertura es parcial).
+- Las demás ganadoras lo son entrando **tras migrar**: 6HJetMbdHB (+296 %), 3bzaJd5yZG (+195 %), DxM1hfY8FQ (+111 %), 2GtmuqG31L (+100 %), DMTgKsvm44 (+85 %), GAsnqm4XkN (+66 %), AqSUfx6Y2e (+52 %), 5LLTYLm8se (+47 %).
+- El panel muestra tres columnas añadidas (ROI y n): «Entra en curva», «Entra tras migrar» y «Cruces (sesgado)». Se guardan en `wallets/{addr}.mig`. Nada se ha quitado.
+- Pendiente: `migrants` sobre 447 tokens con filas por wallet (`rows`) para ver quién entra antes de migrar de forma repetida; el run lleva 85/447 al escribir esto (23 aciertos rápidos, ninguna wallet repetida todavía).

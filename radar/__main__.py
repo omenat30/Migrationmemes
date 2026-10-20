@@ -466,7 +466,10 @@ def cmd_migrants(cfg, a):
         pair_ts = d.get("created") or None
         for w in win:
             w["rel"] = int(w["start"] - pair_ts) if pair_ts else None  # segundos desde la migración (negativo = antes)
-        data[m] = {"sym": sym, "created": created, "pair_ts": pair_ts, "n": len(rows), "winners": win}
+        # filas compactas de quien compró de verdad: [wallet, gastado, cobrado, inicio, fin]; sirven para ver quién entró antes de migrar
+        comp = [[r["wallet"], round(r["buy_usd"] or 0), round(r["sell_usd"] or 0), int(r["start"] or 0), int(r["end"] or 0)]
+                for r in rows if (r.get("buy_usd") or 0) >= 100 and not r.get("transfer_in") and r.get("start")]
+        data[m] = {"sym": sym, "created": created, "pair_ts": pair_ts, "n": len(rows), "winners": win, "rows": comp}
         if i % 5 == 0:
             _json.dump(data, open(a.out, "w"))
             n_w = sum(len(v["winners"]) for v in data.values())

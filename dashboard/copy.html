@@ -271,8 +271,8 @@ function render(){
   $("tiles").innerHTML=tiles.map(function(t){return '<div class="tile"><div class="l">'+t[0]+'</div><div class="v '+t[2]+'">'+t[1]+'</div><div class="n">'+t[3]+'</div></div>'}).join("");
   chart(agg);
 
-  var head='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Mejor</th><th>Rentab.</th><th>Ops 14 d</th><th>Historial</th><th>Última op.</th><th>Abiertas</th><th>Tenencia med.</th><th>Salidas &lt;2 min</th><th>Gana sin sus 2 mejores</th><th>Expected R copiando</th><th>Resultado tuyo</th><th>Sin sus 2 mejores</th><th>Su op. típica</th></tr></thead>';
-  $("tbl").innerHTML=head+(ok.length?'<tbody>'+ok.map(function(e){return row(e,sol)}).join("")+'</tbody>':'<tbody><tr><td colspan="16" class="empty">Ninguna wallet cumple estos filtros ahora mismo.</td></tr></tbody>');
+  var head='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Mejor</th><th>Rentab.</th><th>Ops 14 d</th><th>Historial</th><th>Última op.</th><th>Abiertas</th><th>Tenencia med.</th><th>Salidas &lt;2 min</th><th>Gana sin sus 2 mejores</th><th>Expected R copiando</th><th>Resultado tuyo</th><th>Sin sus 2 mejores</th><th>Su op. típica</th><th title="Operaciones que entran en la curva (antes de migrar, haya migrado o no). Es la cifra justa: incluye los tokens que nunca migraron.">Entra en curva</th><th title="Operaciones que entran después de la migración (pool ya creado)">Entra tras migrar</th><th title="Entra antes de migrar y vende después. Cifra sesgada: solo cuentan tokens que ya sabemos que migraron">Cruces (sesgado)</th></tr></thead>';
+  $("tbl").innerHTML=head+(ok.length?'<tbody>'+ok.map(function(e){return row(e,sol)}).join("")+'</tbody>':'<tbody><tr><td colspan="19" class="empty">Ninguna wallet cumple estos filtros ahora mismo.</td></tr></tbody>');
 
   $("failcard").hidden=!fail.length;
   $("failsum").textContent=fail.length+" wallets analizadas que no cumplen tus filtros (y por qué)";
@@ -281,9 +281,14 @@ function render(){
 
   var ch=(meta&&meta.changes)||[];
   $("log").innerHTML=ch.length?ch.map(function(c){return '<li><span class="tag '+(c.type==="add"?"new":c.type==="flow"?"bad":"warn")+'">'+({add:"entra",drop:"sale",flow:"capital",link:"enlace"}[c.type]||c.type)+'</span><span class="mono">'+esc(short(c.wallet||""))+'</span><span class="muted">'+esc(c.why||"")+'</span></li>'}).join(""):'<li class="muted">Sin cambios registrados.</li>';
-  $("bias").innerHTML='<b>Cómo leer esto.</b> Las wallets se eligen mirando sus últimos 60 días, así que ese tramo sale inflado (sesgo del ganador). La prueba que cuenta es «Desde que entró», que sólo usa operaciones posteriores a la fecha en que la wallet entró en la lista. Mientras ese tramo sea corto, trata el Expected R de 60 días como un máximo y no como una expectativa. Es una simulación: no ejecuta compras ni ventas y no es consejo financiero.';
+  $("bias").innerHTML='<b>Cómo leer esto.</b> Las wallets se eligen mirando sus últimos 60 días, así que ese tramo sale inflado (sesgo del ganador). La prueba que cuenta es «Desde que entró», que sólo usa operaciones posteriores a la fecha en que la wallet entró en la lista. Mientras ese tramo sea corto, trata el Expected R de 60 días como un máximo y no como una expectativa. Es una simulación: no ejecuta compras ni ventas y no es consejo financiero.'+'<br><b>Antes / después de migrar.</b> «Entra en curva» cuenta todas las compras anteriores a la migración, hayan migrado o no: es la cifra justa. «Cruces» (entra antes, vende después) sale siempre altísima porque solo se ven tokens que ya sabemos que migraron; no se puede copiar eligiendo por adelantado. «Entra tras migrar» son compras con el pool ya creado. La hora de migración es la de creación del pool en DexScreener; si no la conoce, la operación cuenta como curva.';
 }
 function addr(a){return '<a href="https://solscan.io/account/'+esc(a)+'" target="_blank" rel="noopener">'+esc(short(a))+'</a> <a class="muted" style="font-size:11px" href="https://gmgn.ai/sol/address/'+esc(a)+'" target="_blank" rel="noopener">gmgn</a>'}
+function migCell(x,biased){
+  if(!x||!x.n)return '<td class="num">—</td>';
+  return '<td class="num '+(biased?'':cls(x.roi))+'" title="'+x.n+' op. · acierto '+Math.round(x.win*100)+' % · tenencia mediana '+x.hold+' min'+(biased?' · sesgado: ya se sabe que el token migró':'')+'">'+(x.roi==null?"—":(x.roi>=0?"+":"")+(x.roi*100).toFixed(0)+" %")+' <span style="color:var(--muted)">('+x.n+')</span></td>';
+}
+function migCells(g){return g?migCell(g.pre,false)+migCell(g.post,false)+migCell(g.cross,true):'<td class="num">—</td><td class="num">—</td><td class="num">—</td>'}
 function row(e,sol){
   var m=e.m,s=e.sim;
   var typ=(m.medCost!=null&&sol)?"$"+Math.round(m.medCost*sol).toLocaleString("es-ES"):"—";
@@ -298,7 +303,7 @@ function row(e,sol){
    '<td class="num">'+fmtMin(m.medHold)+'</td><td class="num">'+fmtPct(m.shortShare)+'</td>'+
    '<td class="num '+cls(m.pnlEx2)+'">'+(m.pnlEx2==null?"—":(m.pnlEx2>=0?"+":"−")+Math.abs(m.pnlEx2).toFixed(1)+" SOL")+'</td>'+
    '<td class="num '+cls(s.expectedR)+'">'+fmtR(s.expectedR)+'</td><td class="num '+cls(s.totalUsd)+'">'+fmtUsd(s.totalUsd)+'</td>'+
-   '<td class="num '+cls(e.totalEx2)+'">'+fmtUsd(e.totalEx2)+'</td><td class="num">'+typ+big+'</td></tr>';
+   '<td class="num '+cls(e.totalEx2)+'">'+fmtUsd(e.totalEx2)+'</td><td class="num">'+typ+big+'</td>'+migCells(e.w.mig)+'</tr>';
 }
 
 function niceStep(raw){var p=Math.pow(10,Math.floor(Math.log10(Math.max(raw,1e-9)))),f=raw/p;return (f<1.5?1:f<3?2:f<7?5:10)*p}

@@ -241,3 +241,18 @@ class MigrantsTest(unittest.TestCase):
         per = {"m1": {"winners": w}, "m2": {"winners": w}, "m3": {"winners": w + [{"wallet": "Z", "mult": 9, "hold": 100, "buy": 200}]}}
         g = migrants.group(per, min_tokens=3)
         self.assertEqual([a for a, _ in g], ["A"])
+
+
+class CrossingTest(unittest.TestCase):
+    def test_classify_and_summarize(self):
+        from radar import crossing
+        mig = {"A": 1000, "B": 1000, "C": 1000, "D": None}
+        P = lambda m, e, x, mult: {"mint": m, "entry_ts": e, "exit_ts": x, "mult": mult, "cost": 1.0, "hold": x - e}
+        self.assertEqual(crossing.classify(P("A", 500, 1500, 3), 1000), "cruce")
+        self.assertEqual(crossing.classify(P("B", 500, 900, 3), 1000), "previa")
+        self.assertEqual(crossing.classify(P("C", 1100, 1500, 3), 1000), "tras")
+        self.assertEqual(crossing.classify(P("D", 500, 1500, 3), None), "curva")
+        s = crossing.summarize([P("A", 500, 1500, 3), P("A", 400, 1600, 1.0), P("D", 1, 2, 0.5)], mig)
+        self.assertEqual(s["cruce"]["n"], 2)
+        self.assertAlmostEqual(s["cruce"]["roi"], 1.0)
+        self.assertEqual(s["curva"]["n"], 1)
