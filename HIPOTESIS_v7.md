@@ -164,3 +164,20 @@ Cada operación cerrada se clasifica: **cruce** (entra antes de migrar y termina
   4bmsYnh4pK + AZ1SxJ6uXr + HHL2FnwJJi (~350 tokens); 3jUDDXW25D + 7Eav6kHmzA (293); 3RFG23xp9i + 71YztbFnNy (25).
 - Panel: filtro de mcap de entrada mín./máx. (como el de GMGN al copiar), preset «Cerca de migrar» (24k-120k USD, R >= 0,3, incluye bots), casilla «Incluir bots»,
   columna «Cerca de migrar (R copiando)» con todas las franjas al pasar el ratón y etiqueta «cluster». Cada operación guardada lleva su mcap de entrada (5.º campo).
+
+## Búsqueda de wallets nuevas «cerca de migrar» en 574 tokens migrados (19-20 oct): DESCARTADA (20-oct-2026)
+Método: `migrants --sort created_timestamp` (574 tokens migrados el 19-20 oct, los 100 mejores traders de cada uno por ganancia, ahora con precio medio de
+compra y venta -> mcap de entrada y salida). 11.217 wallets con compra real >= 100 USD.
+- **Lanzamientos en paquete**: varias «líderes» (4G9JAzftay, 6ACuW6k2MY, 6L3fPsEZz3, A8wfJdeQbn) compran ~16.500 USD en el MISMO bloque en que se crea
+  el token (la compra completa la curva y lo migra al instante) junto con una wallet de ~103 USD; venden en 10-25 min y repiten cada 20-40 min. Es el
+  equipo del token: el lado que dumpea, y no se puede copiar (hay que estar en el bloque de creación). Se excluyen las compras del primer minuto del token.
+- Quedan 62 candidatas con >= 4 entradas a 24k-120k USD de mcap, tenencia >= 2 min y <= 35 % de ventas en 30 s. Verificadas con 60 días de GMGN (61; la
+  última no se pudo leer por el límite de uso): **ninguna cumple** (>= 15 entradas en la franja, R copiando >= 0,3, positivo sin sus 2 mejores y en las dos mitades).
+  - El grupo que parecía ganar x2-x3 (5f35AgnW, 9Endu3oa, ANbNY8jL, 8mLsZYAh, 38HpJA3Q, 6WP9vENK...) acierta el 32-40 % y pierde un 6-16 %: en la lista de
+    ganadores de cada token solo salen sus aciertos (sesgo de supervivencia de la fuente).
+  - Al menos dos clusters perdedores de ~10 wallets con estadísticas casi idénticas (p. ej. 9rmCbNyh, EFsKsckm, 3TgNxVpu, 3Uz7Dvr7, AnjarFvd, DhQzcQY7,
+    9MN3mczQ, E1CNdF4M: ~260 entradas, -12 %).
+  - Las de más volumen y acierto (5aLY85py, 7BNaxx6K, Fv7Gznmj, 8zkgFGVZ, 72tAZjqy) ganan un 4-8 % en total: con 30 s de retraso y comisiones, copiarlas
+    da de -0,03 a -0,18 R. Su margen por operación es demasiado fino para un seguidor.
+- Conclusión: la lista de mejores traders de cada token no sirve como fuente sin verificar con el historial completo; las únicas especialistas cerca de
+  migrar con ventaja demostrada siguen siendo DA9nTGVx7N, 61NP6BpRMt y 6HJetMbdHB. Inventario: 62 wallets más verificadas para este patrón.
