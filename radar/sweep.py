@@ -2,7 +2,7 @@
 
 Función pura `build_docs`: a partir de los análisis de wallets (deepwallet.analyze) y del estado anterior del panel, produce
 los documentos que hay que dejar en la base de datos del artefacto:
-  wallets/{dirección}  {addr, pos: [[hora_entrada, tenencia_s, múltiplo, coste_sol], ...], m: {...}, joined_ts, last_ts, status}
+  wallets/{dirección}  {addr, pos: [[hora_entrada, tenencia_s, múltiplo, coste_sol, mcap_entrada_sol], ...], m: {...}, joined_ts, last_ts, status}
   meta/sweep           {ts, sol_usd, analyzed, active, changes: [{ts, type, wallet, why}]}
 
 Reglas:
@@ -16,6 +16,8 @@ Reglas:
 """
 import time
 
+from .crossing import entry_mcap_sol
+
 KEEP_MIN_CLOSED = 5
 
 
@@ -24,8 +26,10 @@ def _pos_rows(positions):
     for p in positions:
         if not p.get("closed") or p.get("mult") is None:
             continue
+        em = entry_mcap_sol(p)
         rows.append([int(p["entry_ts"]), None if p.get("hold") is None else round(float(p["hold"]), 1),
-                     round(float(p["mult"]), 4), round(float(p["cost"]), 4)])
+                     round(float(p["mult"]), 4), round(float(p["cost"]), 4),
+                     None if em is None or em > 1e6 else round(em, 1)])  # mcap medio de entrada en SOL (filtro de mcap del panel)
     rows.sort(key=lambda r: r[0])
     return rows
 

@@ -466,8 +466,10 @@ def cmd_migrants(cfg, a):
         pair_ts = d.get("created") or None
         for w in win:
             w["rel"] = int(w["start"] - pair_ts) if pair_ts else None  # segundos desde la migración (negativo = antes)
-        # filas compactas de quien compró de verdad: [wallet, gastado, cobrado, inicio, fin]; sirven para ver quién entró antes de migrar
-        comp = [[r["wallet"], round(r["buy_usd"] or 0), round(r["sell_usd"] or 0), int(r["start"] or 0), int(r["end"] or 0)]
+        # filas compactas de quien compró de verdad: [wallet, gastado, cobrado, inicio, fin, mcap_entrada, mcap_salida, fondeador]
+        # + mcap medio de entrada y de salida en USD (precio medio x 1.000 M de supply) y quién fondeó la wallet
+        comp = [[r["wallet"], round(r["buy_usd"] or 0), round(r["sell_usd"] or 0), int(r["start"] or 0), int(r["end"] or 0),
+                 round((r.get("avg_cost") or 0) * 1e9), round((r.get("avg_sold") or 0) * 1e9), r.get("funder")]
                 for r in rows if (r.get("buy_usd") or 0) >= 100 and not r.get("transfer_in") and r.get("start")]
         data[m] = {"sym": sym, "created": created, "pair_ts": pair_ts, "n": len(rows), "winners": win, "rows": comp}
         if i % 5 == 0:

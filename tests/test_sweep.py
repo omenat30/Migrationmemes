@@ -256,3 +256,22 @@ class CrossingTest(unittest.TestCase):
         self.assertEqual(s["cruce"]["n"], 2)
         self.assertAlmostEqual(s["cruce"]["roi"], 1.0)
         self.assertEqual(s["curva"]["n"], 1)
+
+    def test_mcap_bands(self):
+        from radar import crossing
+        G = crossing.GRAD_SOL
+        P = lambda m_entry, m_exit, mult, hold=600: {"closed": True, "mult": mult, "cost": m_entry / 1e9 * 1e6, "bought": 1e6,
+                                                     "proceeds": m_exit / 1e9 * 1e6, "sold": 1e6, "hold": hold}
+        self.assertEqual(crossing.band(0.2 * G), "temprana")
+        self.assertEqual(crossing.band(0.8 * G), "a_punto")
+        self.assertEqual(crossing.band(1.5 * G), "recien")
+        self.assertEqual(crossing.band(5 * G), "tarde")
+        self.assertIsNone(crossing.band(5e7))  # supply distinta: fuera
+        ps = [P(0.8 * G, 1.6 * G, 2.0), P(0.7 * G, 0.6 * G, 0.85), P(2 * G, 2.2 * G, 1.1), P(0.1 * G, 0.2 * G, 2.0)]
+        s = crossing.summarize_mcap(ps, net_fn=lambda p: p["mult"] - 1)
+        self.assertEqual(s["a_punto"]["n"], 2)
+        self.assertEqual(s["near"]["n"], 3)
+        self.assertEqual(s["cross"]["n"], 1)
+        self.assertEqual(s["pre"]["n"], 3)
+        self.assertEqual(s["post"]["n"], 1)
+        self.assertAlmostEqual(s["a_punto"]["er"], ((2.0 - 1) + (0.85 - 1)) / 2 / 0.6, places=3)

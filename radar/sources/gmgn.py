@@ -285,7 +285,10 @@ class Gmgn:
                         "profit": _num(h.get("profit")), "buy_usd": _num(h.get("buy_volume_cur")),
                         "sell_usd": _num(h.get("sell_volume_cur")), "sold_pct": _num(h.get("sell_amount_percentage")),
                         "buys": _num(h.get("buy_tx_count_cur")), "sells": _num(h.get("sell_tx_count_cur")),
-                        "tags": [sanitize_text(t, 20) for t in (h.get("tags") or [])]})
+                        "tags": [sanitize_text(t, 20) for t in (h.get("tags") or [])],
+                        # precio medio de compra y de venta en USD por token: con 1.000 M de supply (pump.fun) dan el mcap de entrada y salida
+                        "avg_cost": _num(h.get("avg_cost")), "avg_sold": _num(h.get("avg_sold")),
+                        "funder": (h.get("native_transfer") or {}).get("address") if isinstance(h.get("native_transfer"), dict) else None})
         return out
 
     def wallet_stats(self, wallets, period="30d"):
@@ -309,7 +312,8 @@ class Gmgn:
                       "lt_neg50": _num(ps.get("pnl_lt_nd5_num")), "avg_hold_s": _num(ps.get("avg_holding_period")),
                       "sol_balance": _num(r.get("native_balance")), "last_ts": _num(r.get("last_timestamp")),
                       "tags": [sanitize_text(t, 20) for t in (_g(r, "common", "tags") or [])],
-                      "created_at": _num(_g(r, "common", "created_at"))}
+                      "created_at": _num(_g(r, "common", "created_at")),
+                      "funder": _g(r, "common", "fund_from_address")}  # quién le mandó el primer SOL: mismo fondeador = posible cluster
         return out
 
     def activity_page(self, wallet, cursor=None, limit=100, types=("buy", "sell")):
