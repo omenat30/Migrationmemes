@@ -13,7 +13,7 @@ reales de Helius; rutas complejas (varios tokens en una transacción) se ignoran
 import time
 from collections import defaultdict
 
-from . import wallet_history
+from . import copysim, wallet_history
 from .util import http_json, median
 
 DAY = 86400
@@ -83,7 +83,12 @@ def metrics(wallet, positions, n_ops, ignored, span_days, cfg):
     holds = [p["hold"] for p in closed if p["hold"] is not None]
     mults = sorted((p["mult"] for p in closed), reverse=True)
     f = cfg["copy"]
+    cp = [[p["entry_ts"], p.get("hold") or 0.0, p["mult"], p["cost"]] for p in closed]
+    full = copysim.simulate(cp, 100, 30) if cp else None
+    ex2 = copysim.simulate(sorted(cp, key=lambda x: -x[2])[2:], 100, 30) if len(cp) > 2 else None
     return {
+        # copiar con 100 USD fijos por operación y 30 s de retraso (supuestos de copysim): rentabilidad esperada y sin las 2 mejores
+        "copy_r": full["expected_r"] if full else None, "copy_total_ex2": ex2["total_usd"] if ex2 else None,
         "wallet": wallet, "n_closed": len(closed), "n_open": sum(1 for p in positions if not p["closed"]),
         "cost_sol": round(cost, 3), "pnl_sol": round(pnl, 3), "roi": (pnl / cost) if cost > 0 else None,
         "pnl_ex_top2": round(sum(per[2:]), 3) if len(per) > 2 else None,
@@ -126,8 +131,15 @@ def passes(m, cfg, flt=None):
         why.append("%.0f%% de salidas en menos de %d min" % (m["short_hold_share"] * 100, f["short_hold_s"] // 60))
     if m["roi"] is not None and m["roi"] > 0 and m["roi"] < f.get("min_roi", 0):
         why.append("rentabilidad %.0f %% < %.0f %%" % (m["roi"] * 100, f["min_roi"] * 100))
-    if m["roi"] is None or m["roi"] <= 0 or (f.get("require_robust", True) and (m["pnl_ex_top2"] is None or m["pnl_ex_top2"] <= 0)):
-        why.append("no es rentable si se quitan sus 2 mejores operaciones (vive de suerte)")
+    if m.get("copy_r") is not None and m["copy_r"] < f.get("min_copy_r", 0):
+        why.append("copiarla rinde solo %+.2f R (< %.2f)" % (m["copy_r"], f["min_copy_r"]))
+    if m["roi"] is None or m["roi"] <= 0:
+        why.append("no es rentable")
+    elif f.get("require_robust", True):
+        # robustez medida copiando con importe fijo: si sin sus 2 mejores operaciones el resultado copiado no es positivo, vive de suerte
+        ex2 = m["copy_total_ex2"] if m.get("copy_total_ex2") is not None else m["pnl_ex_top2"]
+        if ex2 is None or ex2 <= 0:
+            why.append("no es rentable si se quitan sus 2 mejores operaciones (vive de suerte)")
     return (not why), why
 
 
