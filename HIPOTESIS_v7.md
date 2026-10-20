@@ -122,3 +122,16 @@ Petición: wallets con +100 % en 15 días. Método nuevo: top traders de ~146 to
 - Entran (cumplen todos los filtros, ventana de 15 días): AcGLjWVZKR (+46 %, 92 op., 3 % de salidas cortas, 22 min), GAsnqm4XkN (+68 %, 22 op., 48 min),
   5LLTYLm8se (+43 %, 50 op., ~24 h), AqSUfx6Y2e (+35 %, 181 op., 12 min).
 - Aviso de cobertura: GMGN solo devuelve ~1.000 filas de historial por wallet; en las más activas la ventana es parcial (marcado en el panel).
+
+## Reglas por defecto desde el 20-oct-2026 (petición del usuario: tenencias de 5-10 min valen si copiar sale rentable)
+- Tenencia mediana >= 5 min (antes 10), <= 35 % de salidas en < 2 min, >= 20 operaciones cerradas, rentabilidad >= 30 %, historial >= 15 días (con cobertura parcial no se penaliza).
+- Nuevo: **Expected R copiando >= 0,10** (100 USD fijos por operación, retraso 30 s, comisión 1 % y 2 % de impacto por 1.000 USD, stop -60 %) y robustez medida **copiando**:
+  si sin sus 2 mejores operaciones el resultado copiado no es positivo, la wallet vive de suerte. Antes se medía en SOL y pesaba más lo que mueve más dinero; el usuario copia con importe fijo.
+- Con esto cumplen 11 wallets de 55 (ordenadas por Expected R): 3bzaJd5yZG, DMTgKsvm44, 2GtmuqG31L, 5LLTYLm8se, 6HJetMbdHB, GAsnqm4XkN, BcKqw3ZNH8, DxM1hfY8FQ, AcGLjWVZKR, GDpqhJgwzg, AqSUfx6Y2e.
+  Aviso: el Expected R de 3bzaJd5yZG (+11,97) lo dominan unas pocas operaciones enormes (sin las 2 mejores baja a +0,23 y sin el 5 % mejor a -0,15).
+
+## Tokens migrados de pump.fun: ¿hay un grupo que repite x5-x10 en < 30 min? (en curso)
+Método (`python -m radar migrants`): para cada token migrado (lista de pump.fun con complete=true, por market cap o por fecha) se leen sus 100 mejores traders por ganancia (GMGN) y se marcan
+«aciertos rápidos»: compra real >= 150 USD, cobrado >= x5, posición abierta <= 30 min (marcas de primer y último movimiento). Luego se agrupan por wallet.
+Primeros 95 tokens (los de mayor market cap desde junio): 44 aciertos rápidos de 44 wallets distintas, **ninguna repite**; 19 de 43 entraron antes de migrar y 9 en los 30 min posteriores.
+Límite: el top 100 por ganancia no es todo el que operó; los aciertos pequeños no salen.
