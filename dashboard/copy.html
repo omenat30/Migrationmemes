@@ -218,7 +218,7 @@ function evalWallet(w){
   var m=wmetrics(w,since);
   var why=[];
   if(w.m&&w.m.bot)why.push("parece un bot");
-  if(w.m&&w.m.span_days!=null&&w.m.span_days<MIN_SPAN-0.5)why.push("historial de solo "+Math.round(w.m.span_days)+" días");
+  if(w.m&&w.m.complete!==false&&w.m.span_days!=null&&w.m.span_days<MIN_SPAN-0.5)why.push("historial de solo "+Math.round(w.m.span_days)+" días");
   if(m.n<state.ops)why.push("operaciones "+m.n+" < "+state.ops);
   if(m.hits<state.hits)why.push("sólo "+m.hits+" op. de +1000 %");
   if(w.m&&w.m.last_ts&&state.idle>0&&(Date.now()/1000-w.m.last_ts)/86400>state.idle)why.push("sin operar desde hace "+Math.round((Date.now()/1000-w.m.last_ts)/86400)+" días");

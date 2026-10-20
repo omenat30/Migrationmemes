@@ -113,3 +113,12 @@ Muchas cuentas rotan capital rápido, así que el mínimo de historial baja de 3
 El filtro de actividad reciente (>= 5 cerradas en 14 d, <= 14 días sin operar) queda opcional; la tabla marca «poca actividad reciente».
 Movimientos de capital (GMGN, primera pasada): sin enlaces entre las 12 wallets ni destinos comunes. Saldos actuales llamativos: DMTgKsvm44 0,86 SOL, 2GtmuqG31L 0,16 SOL,
 9PLvx6JvBm 2,0 SOL pese a ganancias grandes a 30 días: lo más probable es que la ganancia esté fuera de la wallet o en tokens, y pendiente de confirmar a dónde fue.
+
+## Búsqueda de rentabilidad de 15 días con smart money (20-oct-2026)
+Petición: wallets con +100 % en 15 días. Método nuevo: top traders de ~146 tokens filtrados por etiqueta `smart_degen` de GMGN (125 wallets) más el endpoint `smartmoney`/`kol` en directo
+(150 wallets; solo cuesta 1 unidad por llamada) -> 225 únicas -> estadísticas de PnL a 7 días -> las de >= +30 % se verifican con su actividad de 15 días.
+- Medidas: ninguna wallet con TODAS las operaciones ganadoras en 15 días (entre 81 con >= 4 operaciones cerradas). Mejor acierto: AcGLjWVZKR, 93 % de 92 operaciones.
+- Con +100 % o más en 15 días solo aparece FDuUUwd2j2 (+151 %, 23 operaciones, tenencia mediana de 1 min, 70 % de salidas en < 2 min): no cumple tenencia.
+- Entran (cumplen todos los filtros, ventana de 15 días): AcGLjWVZKR (+46 %, 92 op., 3 % de salidas cortas, 22 min), GAsnqm4XkN (+68 %, 22 op., 48 min),
+  5LLTYLm8se (+43 %, 50 op., ~24 h), AqSUfx6Y2e (+35 %, 181 op., 12 min).
+- Aviso de cobertura: GMGN solo devuelve ~1.000 filas de historial por wallet; en las más activas la ventana es parcial (marcado en el panel).

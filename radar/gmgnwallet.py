@@ -31,8 +31,10 @@ def fetch_activity(g, wallet, days=60, max_pages=60, now=None, page_size=100, lo
         if min((r.get("timestamp") or now) for r in page) <= limit_ts:
             reached = True
             break
+    capped = reached and len(rows) >= 900 and min((r.get("timestamp") or now) for r in rows) > limit_ts
     rows = [r for r in rows if (r.get("timestamp") or 0) >= limit_ts]
-    return rows, {"pages": pages, "reached_start": reached, "txs": len(rows)}
+    # GMGN solo devuelve ~1.000 filas de historial por wallet: si se agotan sin llegar al inicio de la ventana, la cobertura es parcial
+    return rows, {"pages": pages, "reached_start": reached and not capped, "txs": len(rows)}
 
 
 def positions_from_activity(rows, sol_usd):

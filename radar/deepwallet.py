@@ -109,7 +109,8 @@ def passes(m, cfg, flt=None):
     why = []
     if m["bot"]:
         why.append("bot (demasiadas operaciones por día)")
-    if m["span_days"] < f.get("min_span_days", 0) - 0.5:
+    # con cobertura parcial (se llegó al tope de páginas antes del inicio de la ventana) la wallet tiene al menos esos días: no se penaliza
+    if (m.get("coverage") or {}).get("reached_start", True) and m["span_days"] < f.get("min_span_days", 0) - 0.5:
         why.append("historial de solo %.0f días (< %d)" % (m["span_days"], f["min_span_days"]))
     if m.get("last_ts") and f.get("max_idle_days") and (time.time() - m["last_ts"]) / DAY > f["max_idle_days"]:
         why.append("sin operar desde hace %.0f días (> %d)" % ((time.time() - m["last_ts"]) / DAY, f["max_idle_days"]))
