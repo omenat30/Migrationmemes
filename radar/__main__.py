@@ -204,7 +204,7 @@ def cmd_deep(cfg, a):
         cov = m["coverage"]
         with lock:
             counter[0] += 1
-            done[w] = {"metrics": m, "ok": ok, "why": why, "positions": [p for p in pos if p["closed"]]}
+            done[w] = {"metrics": m, "ok": ok, "why": why, "positions": pos}  # TODAS (abiertas incluidas): la auditoría valora las bolsas
             _json.dump(list(done.values()), open(a.out, "w"), default=str)
             print(f"[{counter[0]}/{len(todo)}] {w[:10]}… {'CUMPLE' if ok else 'no cumple':9} cerradas {m['n_closed']:3} · +1000%: {m['hits10']} · retorno {('—' if m['roi'] is None else '%+.0f%%' % (m['roi']*100)):>6} · "
                   f"tenencia {('—' if m['median_hold_s'] is None else '%.0f min' % (m['median_hold_s']/60))} · {cov['txs']} tx {'' if cov['reached_start'] else '(parcial)'} · {time.time()-t0:.0f}s", flush=True)

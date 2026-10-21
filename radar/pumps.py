@@ -99,7 +99,7 @@ def discover_wallets(g, data, now, discover_mod, max_tokens=80, max_wallets=400,
             if save and i % 10 == 0:
                 save(data)
         if s and (s["pnl"] or 0) >= min_pnl and (s["buys"] or 0) >= min_buys and (s["realized_profit"] or 0) >= min_profit and (s["winrate"] or 0) >= min_winrate:
-            out.append((w, dict(s, tokens=len(pool[w]))))
+            out.append((w, dict(s, tokens=len(pool[w]), trigger_mints=[m for m, _ in pool[w]])))
     if save:
         save(data)
     out.sort(key=lambda x: -(x[1]["pnl"] or 0))

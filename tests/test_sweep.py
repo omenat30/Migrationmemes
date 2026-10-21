@@ -295,3 +295,68 @@ class PumpsTest(unittest.TestCase):
         got = pumps.early_buyers(rows, 5.0, 400.0, 1e9)
         self.assertEqual([g["wallet"] for g in got], ["a"])
         self.assertEqual(got[0]["entry_mcap"], round(1.1 * 1e9))
+
+
+class AuditTest(unittest.TestCase):
+    def test_curve_impact_and_net(self):
+        from radar import audit
+        self.assertAlmostEqual(audit.curve_impact(27.96, 1.0), 1 / 30.0, places=2)   # inicio de la curva: v_sol = 30
+        self.assertEqual(audit.curve_impact(900.0, 1.0), 0.0)                          # ya migrado
+        self.assertEqual(audit.curve_impact(None, 1.0), 0.0)
+        self.assertAlmostEqual(audit.net_return(1.0, None, entry_pen=0.0, exit_pen=0.0, fee=0.0), 0.0)
+        self.assertEqual(audit.net_return(0.0), -1.0)                                  # sin stop: suelo -100 %
+        self.assertLess(audit.net_return(2.0, 28.0), audit.net_return(2.0, 300.0))     # más caro entrar en la curva temprana
+
+    def test_copiable_and_bags_and_trigger(self):
+        from radar import audit
+        now = 100 * 86400
+        P = lambda ts, mult, hold, closed=True, last=None, proceeds=0.0: {"entry_ts": ts, "closed": closed, "mult": mult if closed else None, "cost": 1.0,
+                                                                          "proceeds": proceeds, "hold": hold, "exit_ts": last, "bought": 1e6, "mint": "m%d" % ts}
+        rows = audit.valued_positions([P(1, 2.0, 600), P(2, None, None, closed=False, last=2 * 86400, proceeds=0.4),
+                                       P(3, None, None, closed=False, last=now - 3600, proceeds=0.0)], now)
+        self.assertEqual(len(rows), 2)                     # la bolsa de hace una hora no se valora todavía
+        self.assertTrue(rows[1]["stale"] and abs(rows[1]["mult"] - 0.4) < 1e-9)   # bolsa vieja: solo lo realizado
+        kept, skipped = audit.copiable([{"hold": 10, "mult": 5}, {"hold": 45, "mult": 5}, {"hold": 120, "mult": 5}])
+        self.assertEqual((len(kept), skipped), (2, 1))
+        self.assertEqual(kept[0]["mult"], 1.0)             # 30-60 s: solo costes
+        rr, how = audit.drop_trigger([{"mult": 1, "mint": "a"}, {"mult": 9, "mint": "b"}, {"mult": 2, "mint": "c"}])
+        self.assertEqual([r["mint"] for r in rr], ["a", "c"])
+        rr, how = audit.drop_trigger([{"mult": 1, "mint": "a"}, {"mult": 9, "mint": "b"}], ["a"])
+        self.assertEqual([r["mint"] for r in rr], ["b"])
+
+    def test_stats(self):
+        from radar import audit
+        self.assertAlmostEqual(audit.spearman([1, 2, 3, 4], [10, 20, 30, 40]), 1.0)
+        self.assertAlmostEqual(audit.spearman([1, 2, 3, 4], [40, 30, 20, 10]), -1.0)
+        stats = {"a": (400, 1.0, 1.0), "b": (4, 3.0, 1.0), "c": (50, 0.0, 1.0), "d": (50, 0.2, 1.0)}
+        shr, k, mu = audit.shrink(stats)
+        self.assertLess(abs(shr["a"] - 1.0), abs(shr["b"] - 3.0))     # n alto: casi su propia media; n bajo: se encoge hacia la población
+        self.assertLess(shr["b"], 3.0)
+        rows = [{"ts": d * 86400 + 5} for d in range(30)]
+        rs = [1.0] * 30
+        self.assertEqual(audit.day_block_bootstrap(rows, rs), audit.day_block_bootstrap(rows, rs))   # determinista (semilla fija)
+        self.assertAlmostEqual(audit.day_block_bootstrap(rows, rs), 1.0)
+        self.assertAlmostEqual(audit.top_share([5, 3, 1, 1, -4], rows), 9 / 10)
+        self.assertIsNone(audit.ex_top_fraction([1, 2]))
+
+    def test_preserve(self):
+        from radar import daily
+        docs = {"A": {"addr": "A"}, "B": {"addr": "B", "cluster": {"id": "nuevo"}}}
+        prev = {"A": {"cluster": {"id": "c1"}, "excluded": {"why": "x"}, "source_tag": "t"}, "B": {"cluster": {"id": "viejo"}}}
+        daily.preserve(docs, prev)
+        self.assertEqual(docs["A"]["cluster"]["id"], "c1")
+        self.assertEqual(docs["A"]["excluded"]["why"], "x")
+        self.assertEqual(docs["B"]["cluster"]["id"], "nuevo")   # lo que trae el documento nuevo manda
+
+
+class EarlyStopTest(unittest.TestCase):
+    def test_sniper_like(self):
+        from radar import gmgnwallet
+        rows = []
+        for i in range(40):   # 40 tokens, compra y venta con 5 s de diferencia
+            for ev, dt in (("buy", 0), ("sell", 5)):
+                rows.append({"event_type": ev, "token": {"address": "M%d" % i}, "cost_usd": 100.0, "token_amount": 1000.0, "timestamp": 1000 + i * 100 + dt})
+        self.assertTrue(gmgnwallet.sniper_like(rows))
+        slow = [dict(r, timestamp=r["timestamp"] + (3600 if r["event_type"] == "sell" else 0)) for r in rows]
+        self.assertFalse(gmgnwallet.sniper_like(slow))
+        self.assertFalse(gmgnwallet.sniper_like(rows[:10]))   # pocas filas: no se corta

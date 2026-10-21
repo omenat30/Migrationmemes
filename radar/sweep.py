@@ -16,6 +16,8 @@ Reglas:
 """
 import time
 
+from . import audit, crossing
+from .copysim import trade_net
 from .crossing import entry_mcap_sol
 
 KEEP_MIN_CLOSED = 5
@@ -32,6 +34,24 @@ def _pos_rows(positions):
                      None if em is None or em > 1e6 else round(em, 1)])  # mcap medio de entrada en SOL (filtro de mcap del panel)
     rows.sort(key=lambda r: r[0])
     return rows
+
+
+def _bag_rows(positions):
+    """Posiciones abiertas o parciales (compactas): [entrada, última actividad, coste, cobrado, tokens comprados, vendidos]. La auditoría las valora."""
+    rows = []
+    for p in positions:
+        if p.get("closed") or not p.get("cost"):
+            continue
+        rows.append([int(p["entry_ts"]), int(p.get("exit_ts") or p["entry_ts"]), round(float(p["cost"]), 4), round(float(p.get("proceeds") or 0), 4)])
+    rows.sort(key=lambda r: r[0])
+    return rows[-60:]
+
+
+def _mig_doc(positions):
+    net = lambda p: trade_net(1.0 if (p.get("hold") or 0) <= 30 else p["mult"], 0.09, 1.0, 2.0, 100, 60.0)
+    s = crossing.summarize_mcap(positions, net_fn=net)
+    return {"pre": s["pre"], "post": s["post"], "cross": s["cross"], "near": s["near"],
+            "bands": {k: s[k] for k, _, _ in crossing.BANDS}, "basis": "mcap"}
 
 
 def _m_doc(m):
@@ -74,7 +94,10 @@ def build_docs(results, prev, cfg, now=None, sol_usd=None, passes=None):
             status = "dropped" if prev_status == "active" else ("candidate" if prev_status in (None, "candidate") else prev_status)
             if prev_status == "active":
                 changes.append({"ts": now, "type": "drop", "wallet": w, "why": "; ".join(why)})
-        docs[w] = {"addr": w, "pos": _pos_rows(r["positions"]), "m": _m_doc(m), "joined_ts": joined, "last_ts": now, "status": status}
+        has_open = any(not p.get("closed") for p in r["positions"])  # la caché antigua solo guardaba cerradas: sin ellas no hay bolsas que valorar
+        docs[w] = {"addr": w, "pos": _pos_rows(r["positions"]), "m": _m_doc(m), "joined_ts": joined, "last_ts": now, "status": status,
+                   "mig": _mig_doc(r["positions"]), "bags": _bag_rows(r["positions"]), "bags_known": has_open or m["n_open"] == 0,
+                   "aud": audit.wallet_audit(r["positions"], now, trigger_mints=r.get("trigger_mints")), "trigger_mints": r.get("trigger_mints") or []}
     # wallets que estaban activas y no se pudieron analizar hoy: se conservan tal cual, sin inventar cambios
     meta = {"ts": now, "sol_usd": sol_usd, "analyzed": len(seen),
             "active": sum(1 for d in docs.values() if d["status"] == "active"),

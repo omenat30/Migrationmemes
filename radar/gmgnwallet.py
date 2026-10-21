@@ -16,15 +16,19 @@ from .discover import _patient
 DAY = 86400
 
 
-def fetch_activity(g, wallet, days=60, max_pages=60, now=None, page_size=100, log=None):
+def fetch_activity(g, wallet, days=60, max_pages=60, now=None, page_size=100, log=None, early_stop=None):
     """Páginas de actividad hacia atrás hasta `days` días. Devuelve (filas, meta)."""
     now = now or time.time()
     limit_ts = now - days * DAY
     rows, cursor, pages, reached = [], None, 0, False
+    capped_early = False
     while pages < max_pages:
         page, cursor = _patient(lambda: g.activity_page(wallet, cursor=cursor, limit=page_size), log=lambda m: None)
         pages += 1
         rows.extend(page)
+        if early_stop and len(rows) >= 200 and early_stop(rows):
+            capped_early = True
+            break
         if not page or not cursor:
             reached = True
             break
@@ -34,7 +38,7 @@ def fetch_activity(g, wallet, days=60, max_pages=60, now=None, page_size=100, lo
     capped = reached and len(rows) >= 900 and min((r.get("timestamp") or now) for r in rows) > limit_ts
     rows = [r for r in rows if (r.get("timestamp") or 0) >= limit_ts]
     # GMGN solo devuelve ~1.000 filas de historial por wallet: si se agotan sin llegar al inicio de la ventana, la cobertura es parcial
-    return rows, {"pages": pages, "reached_start": reached and not capped, "txs": len(rows)}
+    return rows, {"pages": pages, "reached_start": reached and not capped and not capped_early, "txs": len(rows), "early_stop": capped_early}
 
 
 def positions_from_activity(rows, sol_usd):
@@ -81,9 +85,19 @@ def positions_from_activity(rows, sol_usd):
     return out, n, ignored
 
 
-def analyze(g, wallet, cfg, sol_usd, days=60, max_pages=60, now=None):
+def sniper_like(rows, sol_usd=100.0, min_closed=15, max_median_hold_s=30.0, min_short_share=0.9, short_s=120.0):
+    """¿Es evidente, con las filas vistas hasta ahora, que sale en segundos? Si sí, no merece seguir descargando (cada página son ~1 s de cuota)."""
+    pos, _, _ = positions_from_activity(rows, sol_usd)
+    holds = [p["hold"] for p in pos if p["closed"] and p.get("hold") is not None]
+    if len(holds) < min_closed:
+        return False
+    holds.sort()
+    return holds[len(holds) // 2] < max_median_hold_s and sum(1 for h in holds if h < short_s) / len(holds) >= min_short_share
+
+
+def analyze(g, wallet, cfg, sol_usd, days=60, max_pages=60, now=None, early=True):
     now = now or time.time()
-    rows, meta = fetch_activity(g, wallet, days, max_pages, now)
+    rows, meta = fetch_activity(g, wallet, days, max_pages, now, early_stop=(lambda r: sniper_like(r, sol_usd)) if early else None)
     pos, n_ops, ign = positions_from_activity(rows, sol_usd)
     ts = [r.get("timestamp") for r in rows if r.get("timestamp")]
     span = ((now - min(ts)) / DAY if meta["reached_start"] else (max(ts) - min(ts)) / DAY) if ts else 0.0

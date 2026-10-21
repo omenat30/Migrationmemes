@@ -4,13 +4,16 @@ Lo ejecuta una rutina (sesión nueva cada día): lee del panel el estado anterio
 clave de GMGN del entorno, y escribe el resultado (`wallets/{addr}` y `meta/sweep`) en la base de datos del panel.
 Presupuesto de tiempo y de llamadas a GMGN acotado: el plan gratuito se vacía a ~1 unidad por segundo.
 """
+import hashlib
 import json
 import os
 import time
 
-from . import deepwallet, discover, flows, gmgnwallet, pumps, sweep
+from . import audit, deepwallet, discover, flows, gmgnwallet, pumps, sweep
 
 DAY = 86400
+# campos de un documento de wallet que el barrido conserva del anterior (clusters, descartes manuales, origen y token que la hizo descubrir)
+PRESERVE = ("cluster", "excluded", "source_tag", "trigger_mints")
 
 
 def load_prev(folder):
@@ -29,6 +32,37 @@ def load_prev(folder):
     return out
 
 
+def cfg_snapshot(cfg):
+    """Configuración con la que se evalúa (filtros por defecto + constantes de la auditoría) y su huella: así cada barrido dice con qué reglas se hizo."""
+    snap = {"copy": cfg["copy"], "history": cfg.get("history"),
+            "audit": {"stale_days": audit.STALE_DAYS, "fee": audit.FEE, "entry_pen": audit.ENTRY_PEN, "exit_pen": audit.EXIT_PEN,
+                      "delta_e": audit.DELTA_E, "delta_s": audit.DELTA_S, "grad_sol": audit.GRAD_SOL}}
+    snap["ver"] = hashlib.sha1(json.dumps(snap, sort_keys=True, default=str).encode()).hexdigest()[:10]
+    return snap
+
+
+def snapshot_doc(docs, now):
+    """Instantánea inmutable del barrido: métricas clave de TODAS las wallets evaluadas hoy (no solo las que cumplen). Sirve para medir después,
+    con datos que no se reescriben, si lo que pasaba los filtros seguía funcionando."""
+    rows = {}
+    for w, d in docs.items():
+        m = d.get("m") or {}
+        a = d.get("aud") or {}
+        rows[w] = {"st": d.get("status"), "n": m.get("n_closed"), "roi": m.get("roi"), "hold": m.get("median_hold_s"), "cr": m.get("copy_r"),
+                   "ex2": m.get("copy_total_ex2"), "complete": m.get("complete"), "span": m.get("span_days"),
+                   "aud_r": a.get("r"), "aud_p5": a.get("p5"), "aud_n": a.get("n"), "bags": d.get("bags_known")}
+    return {"ts": now, "wallets": rows}
+
+
+def preserve(docs, prev):
+    """Copia a los documentos nuevos los campos de PRESERVE del documento anterior (si el nuevo no los trae)."""
+    for w, doc in docs.items():
+        for k in PRESERVE:
+            if prev.get(w) and prev[w].get(k) is not None and not doc.get(k):
+                doc[k] = prev[w][k]
+    return docs
+
+
 def pick_refresh(prev, n=8):
     """Wallets seguidas a refrescar hoy: las activas primero y, dentro de cada grupo, las menos recientes."""
     cand = [(a, d) for a, d in prev.items() if d.get("status") in ("active", "candidate", "dropped")
@@ -44,7 +78,7 @@ def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_
     over = lambda: time.time() - t0 > budget_s
     known = set(prev)
     # 1) wallets nuevas desde GMGN (se saltan las ya conocidas)
-    cands = []
+    cands, trig = [], {}
     if not over():
         cands = discover.gmgn_candidates(g, intervals=("24h", "6h"), order_by=("volume", "smart_degen_count"),
                                          tokens_per_interval=new_tokens, max_wallets=new_wallets, skip=known, log=log)
@@ -54,6 +88,7 @@ def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_
             have = {w for w, _ in cands}
             more = pumps.discover_wallets(g, {"tokens": {}, "stats": {}}, now, discover, max_tokens=pump_tokens, max_wallets=150,
                                           skip=known | have, log=log)
+            trig.update({w: s.get("trigger_mints") for w, s in more})
             log(f"wallets nuevas desde tokens que pumpean: {len(more)}")
             cands += more
         except Exception as e:
@@ -74,10 +109,12 @@ def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_
             log(f"  {w[:8]}… error {str(e)[:70]}")
             continue
         bal[w] = st.get("sol_balance")
-        results.append({"metrics": m, "positions": pos})
+        results.append({"metrics": m, "positions": pos, "trigger_mints": trig.get(w) or (prev.get(w) or {}).get("trigger_mints") or None})
         log(f"[{i}/{len(todo)}] {w[:8]}… cerradas {m['n_closed']} · retorno {('—' if m['roi'] is None else '%+.0f%%' % (m['roi'] * 100))}")
     prev_state = {a: {"status": d.get("status"), "joined_ts": d.get("joined_ts")} for a, d in prev.items()}
     docs, meta = sweep.build_docs(results, prev_state, cfg, now=now, sol_usd=sol_usd)
+    # campos puestos a mano o por análisis aparte: el barrido escribe cada documento con `set` y NO debe borrarlos
+    preserve(docs, prev)
     # 3) movimientos de capital de las activas, candidatas buenas y las verificadas hoy
     tracked = [a for a, d in {**prev, **docs}.items() if d.get("status") in ("active",)] + [w for w in docs]
     tracked = list(dict.fromkeys(tracked))[:25]
@@ -107,11 +144,12 @@ def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_
             meta["changes"].append({"ts": now, "type": "flow", "wallet": w, "why": why})
         if f["links"]:
             meta["changes"].append({"ts": now, "type": "link", "wallet": w, "why": "enlazada con " + ", ".join(a[:6] + "…" for a in f["links"])})
+    meta["cfg"] = cfg_snapshot(cfg)
     meta["analyzed"] = len(known | set(docs))
     meta["shared_destinations"] = shared
     meta["active"] = sum(1 for a, d in {**prev, **docs}.items() if d.get("status") == "active")
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump({"wallets": docs, "meta": meta}, f)
+        json.dump({"wallets": docs, "meta": meta, "snapshot": snapshot_doc(docs, now)}, f)
     log(f"{len(docs)} documentos a escribir · {meta['active']} activas · {len(meta['changes'])} cambios → {out_path}")
     return docs, meta
 
@@ -138,6 +176,11 @@ def make_batches(out_path, versions, folder, per_batch=40, meta_version=None):
     if meta_version:
         meta_w["if_version"] = meta_version
     writes.append(meta_w)
+    if d.get("snapshot"):   # documento nuevo cada vez (nunca se sobrescribe): snap-AAAAMMDD-HHMM
+        fp = os.path.join(folder, "snapshot.json")
+        with open(fp, "w", encoding="utf-8") as f:
+            json.dump(d["snapshot"], f)
+        writes.append({"op": "set", "collection": "meta", "doc_id": time.strftime("snap-%Y%m%d-%H%M", time.gmtime(d["snapshot"]["ts"])), "file_path": fp})
     batches = [writes[i:i + per_batch] for i in range(0, len(writes), per_batch)]
     with open(os.path.join(folder, "batches.json"), "w", encoding="utf-8") as f:
         json.dump(batches, f)
