@@ -110,19 +110,31 @@ def cotraders(per_token_results, seed_wallets, min_tokens=3, min_mult=1.3, min_p
     return out
 
 
-def _patient(fn, tries=4, log=print):
+def _patient(fn, tries=4, log=print, net_tries=6):
     """Llama a fn(); si GMGN limita el uso, espera a que acabe el bloqueo (más un margen) y vuelve a intentarlo.
-    Nunca reintenta durante el bloqueo: hacerlo lo alarga."""
+    Nunca reintenta durante el bloqueo: hacerlo lo alarga. Los fallos de red (conexión rechazada, tiempo agotado, DNS) se reintentan con
+    espera creciente (10, 20, 40... s): antes un solo corte abortaba una descarga de horas."""
     import time as _t
     from .sources.gmgn import GmgnRateLimited
-    for i in range(tries):
+    net = 0
+    i = 0
+    while True:
         try:
             return fn()
         except GmgnRateLimited as e:
+            i += 1
+            if i >= tries:
+                return fn()
             wait = max(5.0, (e.reset_at or _t.time() + 60) - _t.time() + 4)
             log(f"  GMGN limita el uso; espero {wait:.0f} s")
             _t.sleep(wait)
-    return fn()
+        except OSError as e:   # URLError, ConnectionError y TimeoutError heredan de OSError
+            net += 1
+            if net > net_tries:
+                raise
+            wait = min(10.0 * 2 ** (net - 1), 160.0)
+            log(f"  fallo de red ({str(e)[:50]}); reintento en {wait:.0f} s")
+            _t.sleep(wait)
 
 
 def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by=("volume", "smart_degen_count"),

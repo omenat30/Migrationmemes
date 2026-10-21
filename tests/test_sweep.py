@@ -360,3 +360,26 @@ class EarlyStopTest(unittest.TestCase):
         slow = [dict(r, timestamp=r["timestamp"] + (3600 if r["event_type"] == "sell" else 0)) for r in rows]
         self.assertFalse(gmgnwallet.sniper_like(slow))
         self.assertFalse(gmgnwallet.sniper_like(rows[:10]))   # pocas filas: no se corta
+
+
+class PatientNetTest(unittest.TestCase):
+    def test_retries_network_errors(self):
+        from radar import discover
+        import time as _t
+        calls = {"n": 0}
+        def flaky():
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise ConnectionRefusedError(111, "Connection refused")
+            return "ok"
+        orig = _t.sleep
+        _t.sleep = lambda s_: None
+        try:
+            self.assertEqual(discover._patient(flaky, log=lambda m: None), "ok")
+            self.assertEqual(calls["n"], 3)
+            def dead():
+                raise ConnectionRefusedError(111, "x")
+            with self.assertRaises(ConnectionRefusedError):
+                discover._patient(dead, log=lambda m: None, net_tries=2)
+        finally:
+            _t.sleep = orig
