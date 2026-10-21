@@ -181,3 +181,16 @@ compra y venta -> mcap de entrada y salida). 11.217 wallets con compra real >= 1
     da de -0,03 a -0,18 R. Su margen por operación es demasiado fino para un seguidor.
 - Conclusión: la lista de mejores traders de cada token no sirve como fuente sin verificar con el historial completo; las únicas especialistas cerca de
   migrar con ventaja demostrada siguen siendo DA9nTGVx7N, 61NP6BpRMt y 6HJetMbdHB. Inventario: 62 wallets más verificadas para este patrón.
+
+## Tokens que pumpean de golpe: quién entró antes (21-oct-2026)
+Método (`radar/pumps.py`, `python -m radar pumps`; ahora también dentro del barrido diario): del ranking de GMGN se toman tokens con subida >= +40 % (5 m), +150 % (1 h) o
++300 % (6 h), mcap >= 15k USD, liquidez >= 8k, edad >= 30 min. De cada uno, los 100 mejores traders; «entró antes del pump» = precio medio de compra <= 1,3 x el precio previo implícito,
+compra >= 150 USD, no recibida por transferencia, cobró >= 1,5 x lo gastado. Prefiltro de 30 días (>= 30 %, >= 20 compras, >= 1.000 USD, acierto >= 35 %) y después historial de 60 días.
+- 8 pases a lo largo de ~2 h: ~45 tokens pumpeando, 253 wallets que entraron antes de algún pump, **solo 2 repiten en >= 2 tokens**. Cada una es mayormente un caso suelto.
+- Pasan el prefiltro de 30 días 11 wallets. Tras el historial de 60 días:
+  - **CMk5PdMzj5 entra como activa**: 28 operaciones, +53 %, tenencia 7 min, R copiando +0,33 (sin sus 2 mejores: +31 USD; margen estrecho). Sus entradas de 24k-120k USD: 9 operaciones, +0,75 R.
+  - **2GqMs4yik1** queda como candidata: 61 operaciones, +65 %, R +0,53, 57 días completos, tenencia mediana 299 s (mínimo 300).
+  - Las otras 9 ganan +42 % a +106 % pero salen en < 2 min el 93-100 % de las veces (francotiradoras: 862TYSvRYo, DJQwtiowTJ, gVDXhoGbeP, 9ncm3MfxC3, GpTXmkdvrT, 2GBkFfJwjM, 4LdasUqBis) o tienen < 7 operaciones y pierden (5kX8tBF4vU, 2wXw813SjC).
+- Observación para la auditoría: esas francotiradoras salen con R copiando de +0,7 a +1,3 porque la simulación por defecto da crédito completo a operaciones de segundos que un seguidor no puede copiar
+  (debilidad nº 1 de `AUDITORIA_REGLAS.md`). Las frena el filtro de tenencia mediana, no el R.
+- Conclusión: la fuente da ~1 wallet válida por cada ~45 tokens pumpeando; es un goteo, no un grupo que repita. Se mantiene en el barrido diario, que acumula pase a pase.
