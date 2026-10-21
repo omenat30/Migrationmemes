@@ -193,3 +193,15 @@ caídas de saldo ≥ 30 % entre barridos (si el saldo ≥ 5 SOL).
 | Pruebas | `tests/` (`python3 -m unittest discover -s tests`; incluye paridad Python↔JS) |
 
 Reproducir una wallet: `python -m radar deep <fichero con direcciones> --source gmgn --days 60 --out <salida.json>` (necesita `GMGN_API_KEY` en `.env`; nunca se imprime ni se sube).
+
+
+## 12. Actualización del 21-oct-2026 (tras la auditoría externa)
+
+Este documento describe la metodología ORIGINAL (§0-§11). Después se recibió una auditoría externa y se aplicó parte de ella; el detalle y los resultados están en `HIPOTESIS_v7.md`, sección «Respuesta a la auditoría externa». Resumen:
+
+- Nuevo módulo `radar/audit.py` y «Modo auditoría» opcional en el panel (no quita ninguna wallet de la lista por defecto): sin stop, sin la operación de descubrimiento, tenencia frente a latencia (< 30 s no se copia; 30-60 s solo costes),
+  bolsas valoradas (cota pesimista), impacto de curva y salida con retraso (placeholders), R encogido hacia la media de la población (Bayes empírico), percentil 5 del bootstrap por bloques de un día, resultado sin el 10 % mejor y reparto del beneficio en las 3 mejores.
+- Walk-forward sobre la caché: hay persistencia de rango entre las wallets copiables (Spearman +0,37 a +0,68, p 0,0005-0,08) pero el R medio posterior solo es positivo en 3 de 4 cortes y el método es optimista (las wallets ya se eligieron mirando todo el periodo).
+- Prueba hacia adelante sin filtrar en el panel e instantánea inmutable por barrido con huella de configuración.
+- El barrido ya no borra `cluster`, `excluded`, `source_tag` ni `trigger_mints`.
+- Debilidades de §9 que siguen abiertas: 3 (salida optimista: ahora hay un 5 % provisional), 4 (penalización de entrada solo medida cerca de migrar), 6 (mcap aproximado), 7 (dependencia entre operaciones y clusters), 9 (barrido diario sin secreto), 10 (sesgo de la fuente). Cerradas parcialmente: 1 (modo auditoría), 2 (bolsas, a falta de la re-descarga), 5 (cobertura parcial en modo auditoría), 8 (bootstrap).

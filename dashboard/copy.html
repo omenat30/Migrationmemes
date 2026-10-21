@@ -103,6 +103,7 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
       <label class="chk"><input type="checkbox" id="stop" checked> Stop −60 %</label>
       <label class="chk" title="Si se quitan sus 2 mejores operaciones, la wallet sigue ganando. Desactívalo para ver wallets que viven de 1 o 2 aciertos enormes."><input type="checkbox" id="robust" checked> Exigir que copiarla siga ganando sin sus 2 mejores</label>
       <label class="chk" title="Wallets que operan decenas de veces al día. Muchas de las que compran justo antes o después de migrar son bots: si las copias, te llegan muchas órdenes y el retraso pesa más."><input type="checkbox" id="bots"> Incluir bots</label>
+      <label class="chk" title="Aplica las reglas de la auditoría del 21-oct: sin stop retrospectivo, sin la operación que hizo descubrir la wallet, tenencia frente a tu latencia, bolsas valoradas, R encogido hacia la media, percentil 5 del bootstrap por días, resultado sin el 10 % mejor y máx. 50 % del beneficio en 3 operaciones. Más estricto. No borra ninguna wallet: solo cambia la lista mostrada."><input type="checkbox" id="audit"> Modo auditoría (estricto)</label>
       <div class="fld"><span class="l">Filtros</span>
         <div class="seg" id="fpre" role="group" aria-label="Nivel de filtros">
           <button type="button" data-v="mid" aria-pressed="true">Por defecto</button>
@@ -153,6 +154,13 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
       <div class="scroll" style="margin-top:8px"><table id="tblfail" style="min-width:640px"></table></div></details>
   </section>
 
+  <section class="card" id="fwdcard" hidden>
+    <h2>Prueba hacia adelante (sin filtrar)</h2>
+    <p class="muted" style="margin:0 0 8px;font-size:12.5px">Cada wallet que ha cumplido los filtros alguna vez cuenta desde el momento en que entró hasta hoy, <b>aunque ya no los cumpla</b>, esté descartada o salga de la lista. Es la única cifra que no depende de haber elegido la wallet mirando su pasado, y la que debe usarse para decidir. Se simula con los parámetros de arriba y el stop desactivado si «Stop» está apagado.</p>
+    <div class="scroll"><table id="tblfwd" style="min-width:640px"></table></div>
+    <p class="muted" id="fwdsum" style="margin:8px 0 0;font-size:12.5px"></p>
+  </section>
+
   <section class="card">
     <h2>Último barrido: cambios</h2>
     <ul class="log" id="log"><li class="muted">Sin datos todavía.</li></ul>
@@ -200,7 +208,7 @@ function fmtMin(s){return s==null?"—":(s<3600?(s/60).toFixed(0)+" min":(s/3600
 function fmtDate(ts){return new Date(ts*1000).toLocaleDateString("es-ES",{day:"2-digit",month:"short"})}
 function cls(x){return x==null?"":x>0?"pos":x<0?"neg":""}
 
-var state={size:100,delay:30,stop:true,mode:"hist",hold:5,short:35,copyR:0.1,ops:20,hits:0,roi:30,idle:0,recent:0,robust:true,top:10,fee:1,imp:2,pen:null,mcMin:0,mcMax:0,bots:false};
+var state={size:100,delay:30,stop:true,mode:"hist",hold:5,short:35,copyR:0.1,ops:20,hits:0,roi:30,idle:0,recent:0,robust:true,top:10,fee:1,imp:2,pen:null,mcMin:0,mcMax:0,bots:false,audit:false};
 var WINDOW_DAYS=60,MIN_SPAN=15;
 var wallets=[],meta=null,connected=false;
 
@@ -219,6 +227,26 @@ function wmetrics(w,since){
     medCost:median(pos.map(function(p){return p[3]}))};
 }
 function simOpts(){return {size:state.size,delay:state.delay,pen:state.pen,fee:state.fee,imp:state.imp,stopPct:60,apply:state.stop}}
+/* ===== AUDITORÍA (21-oct): reglas más estrictas, solo si «Modo auditoría» está activo. Las métricas `aud` las calcula el barrido (radar/audit.py)
+   con 100 USD, sin stop, sin la operación de descubrimiento y con costes conservadores; no cambian con el importe que elijas aquí. ===== */
+function auditWhy(w){
+  var a=w.aud,r=[];
+  if(!a)return ["sin métricas de auditoría"];
+  if(w.m&&w.m.complete===false&&(w.m.span_days==null||w.m.span_days<MIN_SPAN))r.push("sin verificar: historial parcial de menos de "+MIN_SPAN+" días");
+  if(a.n<20)r.push("auditoría: solo "+a.n+" operaciones copiables (< 20)");
+  if(a.rs==null||a.rs<=0)r.push("R encogido "+fmtR(a.rs)+" ≤ 0");
+  if(a.p5==null||a.p5<=0)r.push("percentil 5 del bootstrap por días "+fmtR(a.p5)+" ≤ 0");
+  if(a.ex10==null||a.ex10<=0)r.push("sin el 10 % mejor no gana ("+fmtUsd(a.ex10)+")");
+  if(a.top3!=null&&a.top3>0.5)r.push((a.top3*100).toFixed(0)+" % del beneficio en 3 operaciones (> 50 %)");
+  if(a.roi_pess==null||a.roi_pess*100<30)r.push("rentabilidad con bolsas "+(a.roi_pess==null?"—":(a.roi_pess*100).toFixed(0)+" %")+" < 30 %");
+  return r;
+}
+function audCell(w){
+  var a=w.aud;
+  if(!a)return '<td class="num">—</td>';
+  var tip="R medio "+fmtR(a.r)+" · p5 "+fmtR(a.p5)+" · sin el 10 % mejor "+fmtUsd(a.ex10)+" · top-3 "+(a.top3==null?"—":(a.top3*100).toFixed(0)+" %")+" · "+a.n+" op. copiables ("+(a.n_skip||0)+" fuera por tenencia < 30 s, "+(a.n_stale||0)+" bolsas) · excluida: "+(a.excl||"—")+" · bolsas "+(w.bags_known?"medidas":"SIN medir (cota optimista)");
+  return '<td class="num '+cls(a.rs)+'" title="'+esc(tip)+'">'+fmtR(a.rs)+(w.bags_known?'':' <span style="color:var(--muted)" title="bolsas sin medir">*</span>')+'</td>';
+}
 function evalWallet(w){
   var since=state.mode==="fwd"?(w.joined_ts||Infinity):((meta&&meta.ts)||Date.now()/1000)-WINDOW_DAYS*86400;
   var m=wmetrics(w,since);
@@ -241,13 +269,29 @@ function evalWallet(w){
   if(sim.expectedR!=null&&state.copyR>0&&sim.expectedR<state.copyR)why.push("copiarla rinde "+fmtR(sim.expectedR)+" (< "+state.copyR+" R)");
   if(!(m.roi>0))why.push("no es rentable");
   else if(state.robust&&(m.n<=2||!(sim2.totalUsd>0)))why.push("sin sus 2 mejores operaciones copiarla no gana");
+  if(state.audit)auditWhy(w).forEach(function(x){why.push(x)});
   return {w:w,m:m,why:why,ok:!why.length,sim:sim,totalEx2:m.n>2?sim2.totalUsd:null};
 }
 
+function renderFwd(){
+  var rows=[],tot=0,n=0,sr=0,now=(meta&&meta.ts)||Date.now()/1000;
+  wallets.forEach(function(w){
+    if(!w.joined_ts)return;
+    var m=wmetrics(w,w.joined_ts),sim=simulate(m.pos,simOpts());
+    rows.push({w:w,n:sim.n,er:sim.expectedR,usd:sim.totalUsd,days:(now-w.joined_ts)/86400});
+    tot+=sim.totalUsd;n+=sim.n;if(sim.expectedR!=null)sr+=sim.expectedR*sim.n;
+  });
+  $("fwdcard").hidden=!rows.length;
+  if(!rows.length)return;
+  rows.sort(function(a,b){return b.usd-a.usd});
+  $("tblfwd").innerHTML='<thead><tr><th>Wallet</th><th>Estado</th><th>Desde</th><th>Op. copiadas</th><th>Expected R</th><th>Resultado tuyo</th></tr></thead><tbody>'+rows.map(function(r){
+    return '<tr><td class="addr">'+addr(r.w.addr)+'</td><td>'+esc(r.w.excluded?"descartada":r.w.status||"")+'</td><td class="num">'+r.days.toFixed(1)+' d</td><td class="num">'+r.n+'</td><td class="num '+cls(r.er)+'">'+fmtR(r.er)+'</td><td class="num '+cls(r.usd)+'">'+fmtUsd(r.usd)+'</td></tr>'}).join("")+'</tbody>';
+  $("fwdsum").innerHTML='<b>Cartera completa desde que entró cada una:</b> '+n+' operaciones copiadas, Expected R '+fmtR(n?sr/n:null)+', resultado '+fmtUsd(tot)+(meta&&meta.cfg?' · configuración '+esc(meta.cfg.ver):'')+'. Con tan pocas operaciones todavía no demuestra nada: para distinguir un R de +0,3 del azar hacen falta unos 170 a 860 copias de cartera.';
+}
 function render(){
   var sol=(meta&&meta.sol_usd)||null;
   var ev=wallets.map(evalWallet);
-  var ok=ev.filter(function(e){return e.ok}).sort(function(a,b){return (b.sim.expectedR==null?-9:b.sim.expectedR)-(a.sim.expectedR==null?-9:a.sim.expectedR)}).slice(0,state.top);
+  var ok=ev.filter(function(e){return e.ok}).sort(function(a,b){if(state.audit)return ((b.w.aud&&b.w.aud.rs)||-9)-((a.w.aud&&a.w.aud.rs)||-9);return (b.sim.expectedR==null?-9:b.sim.expectedR)-(a.sim.expectedR==null?-9:a.sim.expectedR)}).slice(0,state.top);
   var fail=ev.filter(function(e){return !e.ok}).sort(function(a,b){return b.m.hits-a.m.hits});
 
   var parts=[];
@@ -265,6 +309,7 @@ function render(){
   else if(ok.length<state.top)msg.innerHTML='<div class="note"><b>Sólo '+ok.length+' de '+state.top+' wallets cumplen tus filtros.</b> No se rellena con wallets que no cumplan. Prueba «Laxos» arriba para ver cuáles se quedan fuera por poco; cada filtro que aflojas deja entrar a wallets de peor calidad.</div>';
   else msg.innerHTML="";
 
+  renderFwd();
   var all=[];ok.forEach(function(e){e.m.pos.forEach(function(p){all.push(p)})});
   var agg=simulate(all,simOpts());
   var ci=(agg.expectedR!=null&&agg.seR!=null)?"intervalo 95 %: "+(agg.expectedR-1.96*agg.seR).toFixed(2)+" a "+(agg.expectedR+1.96*agg.seR).toFixed(2):"1R = lo que pierdes si salta el stop";
@@ -278,8 +323,8 @@ function render(){
   $("tiles").innerHTML=tiles.map(function(t){return '<div class="tile"><div class="l">'+t[0]+'</div><div class="v '+t[2]+'">'+t[1]+'</div><div class="n">'+t[3]+'</div></div>'}).join("");
   chart(agg);
 
-  var head='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Mejor</th><th>Rentab.</th><th>Ops 14 d</th><th>Historial</th><th>Última op.</th><th>Abiertas</th><th>Tenencia med.</th><th>Salidas &lt;2 min</th><th>Gana sin sus 2 mejores</th><th>Expected R copiando</th><th>Resultado tuyo</th><th>Sin sus 2 mejores</th><th>Su op. típica</th><th title="Entradas con mcap por debajo de la graduación de pump.fun (~383 SOL, ~40k USD): en la curva, haya migrado o no el token. Es la cifra justa.">Entra en curva</th><th title="Entradas con mcap por encima de la graduación (~40k USD): token ya migrado">Entra tras migrar</th><th title="Entra en la curva y vende de media por encima de la graduación. Cifra sesgada: solo cuentan tokens que ya sabemos que migraron">Cruces (sesgado)</th><th title="Expected R copiando SOLO sus entradas a punto de migrar o recién migradas (mcap de entrada entre 0,6 y 3 veces la graduación: ~24k-120k USD), con 100 USD, 30 s de retraso y sin ventaja en las ventas de menos de 30 s">Cerca de migrar (R copiando)</th></tr></thead>';
-  $("tbl").innerHTML=head+(ok.length?'<tbody>'+ok.map(function(e){return row(e,sol)}).join("")+'</tbody>':'<tbody><tr><td colspan="20" class="empty">Ninguna wallet cumple estos filtros ahora mismo.</td></tr></tbody>');
+  var head='<thead><tr><th>Wallet</th><th>Op.</th><th>≥ +1000 %</th><th>Mejor</th><th>Rentab.</th><th>Ops 14 d</th><th>Historial</th><th>Última op.</th><th>Abiertas</th><th>Tenencia med.</th><th>Salidas &lt;2 min</th><th>Gana sin sus 2 mejores</th><th>Expected R copiando</th><th>Resultado tuyo</th><th>Sin sus 2 mejores</th><th>Su op. típica</th><th title="Entradas con mcap por debajo de la graduación de pump.fun (~383 SOL, ~40k USD): en la curva, haya migrado o no el token. Es la cifra justa.">Entra en curva</th><th title="Entradas con mcap por encima de la graduación (~40k USD): token ya migrado">Entra tras migrar</th><th title="Entra en la curva y vende de media por encima de la graduación. Cifra sesgada: solo cuentan tokens que ya sabemos que migraron">Cruces (sesgado)</th><th title="Expected R copiando SOLO sus entradas a punto de migrar o recién migradas (mcap de entrada entre 0,6 y 3 veces la graduación: ~24k-120k USD), con 100 USD, 30 s de retraso y sin ventaja en las ventas de menos de 30 s">Cerca de migrar (R copiando)</th><th title="R medio de la copia según la auditoría, encogido hacia la media de todas las wallets evaluadas (Bayes empírico). Sin stop retrospectivo, sin la operación que hizo descubrir la wallet, tenencia &lt; 30 s fuera, costes conservadores. * = bolsas aún sin medir.">R auditoría (encogido)</th></tr></thead>';
+  $("tbl").innerHTML=head+(ok.length?'<tbody>'+ok.map(function(e){return row(e,sol)}).join("")+'</tbody>':'<tbody><tr><td colspan="21" class="empty">Ninguna wallet cumple estos filtros ahora mismo.</td></tr></tbody>');
 
   $("failcard").hidden=!fail.length;
   $("failsum").textContent=fail.length+" wallets analizadas que no cumplen tus filtros (y por qué)";
@@ -288,7 +333,7 @@ function render(){
 
   var ch=(meta&&meta.changes)||[];
   $("log").innerHTML=ch.length?ch.map(function(c){return '<li><span class="tag '+(c.type==="add"?"new":c.type==="flow"?"bad":"warn")+'">'+({add:"entra",drop:"sale",flow:"capital",link:"enlace"}[c.type]||c.type)+'</span><span class="mono">'+esc(short(c.wallet||""))+'</span><span class="muted">'+esc(c.why||"")+'</span></li>'}).join(""):'<li class="muted">Sin cambios registrados.</li>';
-  $("bias").innerHTML='<b>Cómo leer esto.</b> Las wallets se eligen mirando sus últimos 60 días, así que ese tramo sale inflado (sesgo del ganador). La prueba que cuenta es «Desde que entró», que sólo usa operaciones posteriores a la fecha en que la wallet entró en la lista. Mientras ese tramo sea corto, trata el Expected R de 60 días como un máximo y no como una expectativa. Es una simulación: no ejecuta compras ni ventas y no es consejo financiero.'+'<br><b>Antes / después de migrar.</b> Se mide con el mcap medio de entrada: la curva de pump.fun se completa a ~383 SOL (~40k USD). «Entra en curva» = por debajo, haya migrado o no el token: es la cifra justa. «Cruces» (entra en la curva y vende por encima) sale siempre altísima porque solo se ven tokens que ya migraron; no se puede elegir por adelantado. «Cerca de migrar» = R copiando solo sus entradas entre ~24k y ~120k USD de mcap (pasa el ratón para ver todas las franjas). Con historial de GMGN el mcap usa el precio de SOL actual: es aproximado. Las wallets con etiqueta «cluster» compran los mismos tokens con segundos de diferencia: casi seguro, la misma persona.';
+  $("bias").innerHTML='<b>Cómo leer esto.</b> Las wallets se eligen mirando sus últimos 60 días, así que ese tramo sale inflado (sesgo del ganador). La prueba que cuenta es «Desde que entró», que sólo usa operaciones posteriores a la fecha en que la wallet entró en la lista. Mientras ese tramo sea corto, trata el Expected R de 60 días como un máximo y no como una expectativa. Es una simulación: no ejecuta compras ni ventas y no es consejo financiero.'+'<br><b>Antes / después de migrar.</b> Se mide con el mcap medio de entrada: la curva de pump.fun se completa a ~383 SOL (~40k USD). «Entra en curva» = por debajo, haya migrado o no el token: es la cifra justa. «Cruces» (entra en la curva y vende por encima) sale siempre altísima porque solo se ven tokens que ya migraron; no se puede elegir por adelantado. «Cerca de migrar» = R copiando solo sus entradas entre ~24k y ~120k USD de mcap (pasa el ratón para ver todas las franjas). Con historial de GMGN el mcap usa el precio de SOL actual: es aproximado. Las wallets con etiqueta «cluster» compran los mismos tokens con segundos de diferencia: casi seguro, la misma persona.<br><b>Auditoría (21-oct).</b> El stop del −60 % de la simulación por defecto se aplica mirando el resultado final y recorta pérdidas sin cortar las ganadoras que pasaron por −60 %; la elección usa los mismos 60 días con los que se mide; las bolsas sin vender no restan. «Modo auditoría» corrige eso (sin stop, sin la operación de descubrimiento, bolsas valoradas, R encogido, bootstrap por días). La lista por defecto sigue siendo la de siempre y no se ha quitado ninguna wallet. La prueba que cuenta es «Prueba hacia adelante (sin filtrar)».';
 }
 function addr(a){return '<a href="https://solscan.io/account/'+esc(a)+'" target="_blank" rel="noopener">'+esc(short(a))+'</a> <a class="muted" style="font-size:11px" href="https://gmgn.ai/sol/address/'+esc(a)+'" target="_blank" rel="noopener">gmgn</a>'}
 function migCell(x,biased){
@@ -312,7 +357,7 @@ function row(e,sol){
    '<td class="num">'+fmtMin(m.medHold)+'</td><td class="num">'+fmtPct(m.shortShare)+'</td>'+
    '<td class="num '+cls(m.pnlEx2)+'">'+(m.pnlEx2==null?"—":(m.pnlEx2>=0?"+":"−")+Math.abs(m.pnlEx2).toFixed(1)+" SOL")+'</td>'+
    '<td class="num '+cls(s.expectedR)+'">'+fmtR(s.expectedR)+'</td><td class="num '+cls(s.totalUsd)+'">'+fmtUsd(s.totalUsd)+'</td>'+
-   '<td class="num '+cls(e.totalEx2)+'">'+fmtUsd(e.totalEx2)+'</td><td class="num">'+typ+big+'</td>'+migCells(e.w.mig)+'</tr>';
+   '<td class="num '+cls(e.totalEx2)+'">'+fmtUsd(e.totalEx2)+'</td><td class="num">'+typ+big+'</td>'+migCells(e.w.mig)+audCell(e.w)+'</tr>';
 }
 
 function niceStep(raw){var p=Math.pow(10,Math.floor(Math.log10(Math.max(raw,1e-9)))),f=raw/p;return (f<1.5?1:f<3?2:f<7?5:10)*p}
@@ -353,7 +398,7 @@ function sync(){
 function num(id,fb){var v=parseFloat($(id).value);return isFinite(v)&&v>=0?v:fb}
 function readInputs(){
   state.size=Math.max(1,num("size",100));state.stop=$("stop").checked;
-  state.robust=$("robust").checked;state.bots=$("bots").checked;state.hold=num("f_hold",30);state.short=num("f_short",25);state.ops=num("f_ops",20);state.hits=num("f_hits",0);state.roi=num("f_roi",30);state.copyR=num("f_copyr",0.1);state.idle=num("f_idle",0);state.recent=num("f_recent",0);state.mcMin=num("f_mcmin",0);state.mcMax=num("f_mcmax",0);state.top=Math.max(1,Math.min(50,num("f_top",10)));
+  state.robust=$("robust").checked;state.bots=$("bots").checked;state.audit=$("audit").checked;state.hold=num("f_hold",30);state.short=num("f_short",25);state.ops=num("f_ops",20);state.hits=num("f_hits",0);state.roi=num("f_roi",30);state.copyR=num("f_copyr",0.1);state.idle=num("f_idle",0);state.recent=num("f_recent",0);state.mcMin=num("f_mcmin",0);state.mcMax=num("f_mcmax",0);state.top=Math.max(1,Math.min(50,num("f_top",10)));
   state.fee=num("a_fee",1);state.imp=num("a_imp",2);
   var p=parseFloat($("a_pen").value);state.pen=isFinite(p)?p/100:null;
 }
@@ -367,7 +412,7 @@ $("fpre").addEventListener("click",function(e){var b=e.target.closest("button");
   $("f_hold").value=f.hold;$("f_short").value=f.short;$("f_ops").value=f.ops;$("f_hits").value=f.hits;sync();render();save()});
 $("mode").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.mode=b.dataset.v;sync();render();save()});
 try{var sv=JSON.parse(localStorage.getItem("copy_state12")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
-  $("size").value=state.size;$("stop").checked=state.stop;$("robust").checked=state.robust!==false;$("bots").checked=!!state.bots;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_roi").value=state.roi;$("f_copyr").value=state.copyR;$("f_idle").value=state.idle;$("f_recent").value=state.recent;$("f_mcmin").value=state.mcMin||0;$("f_mcmax").value=state.mcMax||0;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
+  $("size").value=state.size;$("stop").checked=state.stop;$("robust").checked=state.robust!==false;$("bots").checked=!!state.bots;$("audit").checked=!!state.audit;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_roi").value=state.roi;$("f_copyr").value=state.copyR;$("f_idle").value=state.idle;$("f_recent").value=state.recent;$("f_mcmin").value=state.mcMin||0;$("f_mcmax").value=state.mcMax||0;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
 sync();render();
 
 (async function(){

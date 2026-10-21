@@ -194,3 +194,45 @@ compra >= 150 USD, no recibida por transferencia, cobró >= 1,5 x lo gastado. Pr
 - Observación para la auditoría: esas francotiradoras salen con R copiando de +0,7 a +1,3 porque la simulación por defecto da crédito completo a operaciones de segundos que un seguidor no puede copiar
   (debilidad nº 1 de `AUDITORIA_REGLAS.md`). Las frena el filtro de tenencia mediana, no el R.
 - Conclusión: la fuente da ~1 wallet válida por cada ~45 tokens pumpeando; es un goteo, no un grupo que repita. Se mantiene en el barrido diario, que acumula pase a pase.
+
+## Respuesta a la auditoría externa del 21-oct-2026
+Veredicto de la auditoría: bien construido y documentado con honestidad, pero la cifra simulada está inflada por cinco sesgos (stop retrospectivo, operación de descubrimiento incluida, bolsas ignoradas,
+costes y retrasos constantes, cobertura parcial que relaja el filtro) y con n >= 20 la estadística no separa habilidad de suerte. **No se ha quitado ninguna wallet del panel**: la lista por defecto no cambia;
+las correcciones son un «Modo auditoría» opcional, columnas nuevas y una sección de prueba hacia adelante.
+
+### P0 hecho
+1. **Walk-forward sobre la caché** (`tools/analysis/walkforward.py`, 248 wallets, cortes T = hoy − 35/28/21/14 días): con lo conocido en T (posiciones cerradas con salida <= T) se eligen wallets y se copian solo las
+   posiciones abiertas DESPUÉS de T. Entre las wallets **copiables** (tenencia mediana >= 5 min y <= 35 % de salidas < 2 min en lo conocido en T):
+   | corte | copiables | correlación de rangos (R auditoría antes vs después) | p (permutación) | R posterior: mitad alta por R previo / mitad baja |
+   |---|---|---|---|---|
+   | 16-sep | 11 | +0,46 | 0,079 | +1,44 (6) / −0,29 (5) |
+   | 23-sep | 17 | +0,68 | 0,002 | +1,91 (9) / +0,49 (8) |
+   | 30-sep | 24 | +0,37 | 0,035 | +2,45 (12) / −0,21 (12) |
+   | 07-oct | 33 | +0,61 | 0,0005 | −0,15 (17) / −0,32 (16) |
+   Lectura: hay **persistencia de rango** (los filtros no son puro ruido), pero el R medio posterior de las copiables es positivo en 3 de 4 cortes y **negativo en el último** (ventana de solo 14 días).
+   Con costes suaves (sin impacto de curva ni retraso de salida) el resultado es casi igual: la conclusión no depende de los costes provisionales de la auditoría.
+   **Tres salvedades graves**: (a) las wallets de la caché ya se eligieron mirando los 60 días COMPLETOS, incluido el tramo posterior a T: un resultado nulo habría sido concluyente, uno positivo es solo una cota
+   optimista; (b) la caché antigua solo guardaba posiciones CERRADAS: **las bolsas no se han podido valorar** con estos datos (por eso `sin_bolsas` y `auditoria` salen idénticos); (c) los cortes se solapan, no son pruebas independientes.
+   Errores míos corregidos durante el análisis: el stop retrospectivo tapaba pérdidas (por eso el R «por defecto» salía mayor), y una primera pasada quitaba también la mejor operación del tramo posterior (sesgo a la baja, retirada).
+2. **C1 stop**: `radar/audit.py::net_return` no aplica stop (suelo −100 %). La simulación por defecto del panel sigue igual (con stop) para no cambiar la lista; el modo auditoría usa el R sin stop.
+3. **C2 operación de descubrimiento**: se excluye el token disparador (`trigger_mints`, que ahora guardan las candidatas de `pumps`) o, si no se sabe, la de mayor múltiplo. Pendiente: guardar el token disparador también para las demás fuentes.
+4. **C3 bolsas**: `valued_positions` valora las abiertas/parciales sin movimientos desde hace >= 7 días a lo realizado (lo que queda, a 0: cota pesimista; sin precio actual no hay otra cosa). El comando `deep` ahora guarda las posiciones abiertas
+   y cada documento lleva `bags`/`bags_known`. **Las 57 wallets del panel se están volviendo a descargar con bolsas** (en curso).
+5. **C4 cobertura parcial**: en modo auditoría, historial parcial de < 15 días = «sin verificar» y fuera. (Pendiente: descartar posiciones cuya primera compra queda fuera de la cobertura.)
+6. **C5 «Desde que entró»**: nueva sección «Prueba hacia adelante (sin filtrar)»: cada wallet con `joined_ts` cuenta desde ese momento hasta hoy aunque ya no cumpla filtros o esté descartada/dropped. Cada barrido guarda además una **instantánea
+   inmutable** (`meta/snap-AAAAMMDD-HHMM`) con las métricas de TODAS las wallets evaluadas y la huella de la configuración (`meta.cfg.ver`).
+7. **Barrido**: ya no borra a mano `cluster`, `excluded`, `source_tag` ni `trigger_mints` (escribía cada documento con `set`); calcula `mig`, `aud` y `bags` en cada documento. El barrido diario sigue sin ejecutarse de verdad por falta del secreto `GMGN_API_KEY`.
+8. **Descubrimiento**: corte temprano en `gmgnwallet` (si con >= 15 posiciones cerradas la tenencia mediana es < 30 s y >= 90 % sale en < 2 min, no se siguen descargando páginas).
+
+### Estado actual (con lo medido hoy)
+- Modo auditoría, **sin bolsas todavía**: de las 13 activas solo 5LLTYLm8se pasa todas las reglas (R encogido +1,44, p5 +0,45, resultado sin el 10 % mejor +1.605 USD, 38 % del beneficio en 3 operaciones, +38 % de rentabilidad). Las demás fallan sobre todo por p5 del bootstrap <= 0
+  y por no ganar sin el 10 % mejor. AcGLjWVZKR queda «sin verificar» (cobertura parcial de < 15 días).
+- Prueba hacia adelante: las wallets añadidas el 19-21 oct llevan 1-2 días y aún no tienen operaciones nuevas. Con las 3 wallets de las semillas antiguas que tienen tramo hacia adelante (BcKqw3ZNH8, HD37a8wp8m, DK3h7FvuGz; las dos últimas ya «dropped»):
+  30 operaciones, Expected R −0,27, −488 USD con 100 USD por operación. Es muy poco para concluir, pero **no es positivo**.
+- Dinero real: no. Criterios de la auditoría (configuración congelada, >= 170-860 copias de cartera hacia adelante, límite inferior del IC 95 % > 0 con simulación sobre el tape, drawdown máximo aceptable, piloto con importe mínimo) sin cumplir.
+
+### Pendiente (por prioridad)
+- **P0**: valorar las bolsas con la re-descarga en curso y volver a medir el modo auditoría; arreglar el secreto del barrido diario.
+- **P1**: reproducción sobre el tape con latencia medida y comisión total medida en operaciones reales pequeñas (hoy: impacto de curva ≈ S/v_sol y una penalización de salida del 5 % **provisional**).
+- **P2**: embudo por fuente y recall del prefiltro, actualización incremental, índice invertido de compradores tempranos, herederas de wallets.
+- **P3**: reglas de ejecución (tope de persecución, tamaño por convicción, consenso entre clusters, salida propia, horario) a validar en walk-forward.
