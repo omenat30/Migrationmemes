@@ -139,7 +139,7 @@ def _patient(fn, tries=4, log=print, net_tries=6):
 
 def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by=("volume", "smart_degen_count"),
                     min_trader_profit_usd=300.0, min_pnl=0.30, min_winrate=0.0, min_buys=20, min_profit_usd=1000.0,
-                    period="30d", pump_only=True, cache=None, max_wallets=400, skip=(), log=print):
+                    period="30d", pump_only=True, cache=None, max_wallets=400, skip=(), log=print, tag=None):
     """Descubrimiento con GMGN (solo lectura): tokens en tendencia -> mejores traders de cada uno -> estadísticas de PnL a 30 días
     una a una (con caché en disco) -> filtro. Devuelve [(wallet, stats)] ordenado por rentabilidad. Los filtros de aquí solo
     reducen el trabajo: la decisión final la toman los filtros de deepwallet/gmgnwallet con el historial completo."""
@@ -171,7 +171,7 @@ def gmgn_candidates(g, intervals=("24h", "6h"), tokens_per_interval=40, order_by
     log(f"tokens en tendencia a revisar: {len(tokens)}")
     for i, mint in enumerate(tokens if not pool else (), 1):
         try:
-            for tr in _patient(lambda: g.top_traders(mint, 100, "profit"), log=log):
+            for tr in _patient(lambda: (g.top_traders(mint, 100, "profit", tag) if tag else g.top_traders(mint, 100, "profit")), log=log):
                 if (tr["profit"] or 0) >= min_trader_profit_usd:
                     pool.setdefault(tr["wallet"], []).append((tr["profit"] or 0))
         except Exception as e:

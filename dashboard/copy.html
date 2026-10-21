@@ -81,7 +81,7 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
   <header>
     <div>
       <h1>Wallets copiables</h1>
-      <p class="sub">Wallets de Solana con rentabilidad de al menos 30 % en 60 días, con al menos 15 días de historial y una tenencia mediana de al menos 5 minutos y que copiarlas salga rentable. Simula qué habrías ganado copiándolas con tu tamaño por operación.</p>
+      <p class="sub">Wallets de Solana con rentabilidad de al menos 30 % en 60 días, con al menos 7 días de historial y una tenencia mediana de al menos 5 minutos y que copiarlas salga rentable. Simula qué habrías ganado copiándolas con tu tamaño por operación.</p>
     </div>
     <div class="status" id="status"><span class="pill stale"><span class="dot"></span>conectando…</span></div>
   </header>
@@ -209,7 +209,7 @@ function fmtDate(ts){return new Date(ts*1000).toLocaleDateString("es-ES",{day:"2
 function cls(x){return x==null?"":x>0?"pos":x<0?"neg":""}
 
 var state={size:100,delay:30,stop:true,mode:"hist",hold:5,short:35,copyR:0.1,ops:20,hits:0,roi:30,idle:0,recent:0,robust:true,top:10,fee:1,imp:2,pen:null,mcMin:0,mcMax:0,bots:false,audit:false};
-var WINDOW_DAYS=60,MIN_SPAN=15;
+var WINDOW_DAYS=60,MIN_SPAN=7,AUDIT_SPAN=15;   // por defecto basta con 7 días de historial (petición del 21-oct); el modo auditoría sigue exigiendo 15
 var wallets=[],meta=null,connected=false;
 
 function wmetrics(w,since){
@@ -232,7 +232,7 @@ function simOpts(){return {size:state.size,delay:state.delay,pen:state.pen,fee:s
 function auditWhy(w){
   var a=w.aud,r=[];
   if(!a)return ["sin métricas de auditoría"];
-  if(w.m&&w.m.complete===false&&(w.m.span_days==null||w.m.span_days<MIN_SPAN))r.push("sin verificar: historial parcial de menos de "+MIN_SPAN+" días");
+  if(w.m&&w.m.complete===false&&(w.m.span_days==null||w.m.span_days<AUDIT_SPAN))r.push("sin verificar: historial parcial de menos de "+AUDIT_SPAN+" días");
   if(a.n<20)r.push("auditoría: solo "+a.n+" operaciones copiables (< 20)");
   if(a.rs==null||a.rs<=0)r.push("R encogido "+fmtR(a.rs)+" ≤ 0");
   if(a.p5==null||a.p5<=0)r.push("percentil 5 del bootstrap por días "+fmtR(a.p5)+" ≤ 0");
@@ -254,7 +254,7 @@ function evalWallet(w){
   if(w.excluded)why.push("descartada: "+(w.excluded.why||"a mano"));
   if((state.mcMin>0||state.mcMax>0)&&!(w.pos||[]).some(function(p){return p[4]!=null}))why.push("sin datos de mcap de entrada");
   if(w.m&&w.m.bot&&!state.bots)why.push("parece un bot");
-  if(w.m&&w.m.complete!==false&&w.m.span_days!=null&&w.m.span_days<MIN_SPAN-0.5)why.push("historial de solo "+Math.round(w.m.span_days)+" días");
+  if(w.m&&w.m.complete!==false&&w.m.span_days!=null&&w.m.span_days<(state.audit?AUDIT_SPAN:MIN_SPAN)-0.5)why.push("historial de solo "+Math.round(w.m.span_days)+" días");
   if(m.n<state.ops)why.push("operaciones "+m.n+" < "+state.ops);
   if(m.hits<state.hits)why.push("sólo "+m.hits+" op. de +1000 %");
   if(w.m&&w.m.last_ts&&state.idle>0&&(Date.now()/1000-w.m.last_ts)/86400>state.idle)why.push("sin operar desde hace "+Math.round((Date.now()/1000-w.m.last_ts)/86400)+" días");
