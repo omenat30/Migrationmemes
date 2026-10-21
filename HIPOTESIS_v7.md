@@ -236,3 +236,16 @@ las correcciones son un «Modo auditoría» opcional, columnas nuevas y una secc
 - **P1**: reproducción sobre el tape con latencia medida y comisión total medida en operaciones reales pequeñas (hoy: impacto de curva ≈ S/v_sol y una penalización de salida del 5 % **provisional**).
 - **P2**: embudo por fuente y recall del prefiltro, actualización incremental, índice invertido de compradores tempranos, herederas de wallets.
 - **P3**: reglas de ejecución (tope de persecución, tamaño por convicción, consenso entre clusters, salida propia, horario) a validar en walk-forward.
+
+## Búsqueda ampliada con historial mínimo de 7 días: smart money y KOL (21-oct-2026)
+Petición: más wallets «ultraperformantes», historial desde 7 días, buscando en los mejores traders de GMGN (smart money, KOL) y sin ser demasiado estricto.
+- Regla cambiada: `min_span_days` 15 -> **7** (código y panel; el modo auditoría sigue pidiendo 15). La lista por defecto del panel solo puede ganar wallets con este cambio.
+- Fuente 1: **531 wallets de smart money/KOL vistas operando en directo** (90 rondas de `/v1/user/smartmoney` y `/kol`) y nunca analizadas. Estadísticas de 7 días (`wallet_stats`): solo 2 superan +50 % semanal y 6 superan +30 %
+  (con >= 10 compras, >= 300 USD y acierto >= 35-40 %). Las 18 con >= +20 % semanal se verificaron con 60 días de historial.
+- Fuente 2: **rankings de smart money y KOL** (`top_traders` con `tag=smart_degen` y `renowned` de ~300 tokens de los rankings de 1 h, 6 h y 24 h por swaps, volumen y nº de smart money): 233 wallets con estadísticas de 7 días;
+  con el corte duro (>= +50 %) pasaron 0. Con corte suave (>= +10 %, >= 10 compras, >= 200 USD, acierto >= 30 %) pasaron 29, todas verificadas con 60 días.
+- Resultado de las 47 verificadas (reglas de siempre): **3 cumplen** — 3GzBLpxTWW (186 operaciones, +66 %, 10 min de tenencia, R +1,01; 60 posiciones abiertas, pero en auditoría R encogido +0,53 y p5 +0,25), 1syVm1CQmR (22 op., +65 %, 15 min, R +0,42, 50 días de historial)
+  y HxAu7MENte (74 op., +35 %, 10 min, R +0,76). Ocho más quedan como candidatas por poco (5smDvp8Ywj, 9kUTBNb2tE: salidas < 2 min del 39-40 % frente al máximo de 35 %; FBfChxAZmk y JTz2orjGgG: no ganan sin sus 2 mejores; 5nfHyFA3pf y 2DKRG4ygNU: menos de 7 días;
+  8ZNBUhgP6F y E4Zzoerafz: rentabilidad < 30 %).
+- Lo demás son **francotiradoras**: ganan +20 % a +121 % (F9zT1F46HA +121 %, 6bnQ7Ea1eS +103 %, BKRguFtHn5 +95 %, 9YvYHGzXov +91 %...) pero salen en 1-2 min el 50-80 % de las veces; no se pueden copiar.
+- Observaciones: los smart money de GMGN son en conjunto más modestos de lo que sugiere su etiqueta (solo 6 de 531 pasan +30 % semanal) y la mayoría de los muy rentables son bots de segundos. Tasa de acierto de la cadena: 3 de 47 (6 %).
