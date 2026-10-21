@@ -8,7 +8,7 @@ import json
 import os
 import time
 
-from . import deepwallet, discover, flows, gmgnwallet, sweep
+from . import deepwallet, discover, flows, gmgnwallet, pumps, sweep
 
 DAY = 86400
 
@@ -37,7 +37,7 @@ def pick_refresh(prev, n=8):
     return [a for a, _ in cand[:n]]
 
 
-def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_n=8, refresh_n=8, budget_s=3 * 3600,
+def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_n=8, refresh_n=8, budget_s=3 * 3600, pump_tokens=40,
         log=print, now=None):
     t0 = time.time()
     now = int(now or t0)
@@ -48,6 +48,16 @@ def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_
     if not over():
         cands = discover.gmgn_candidates(g, intervals=("24h", "6h"), order_by=("volume", "smart_degen_count"),
                                          tokens_per_interval=new_tokens, max_wallets=new_wallets, skip=known, log=log)
+    # 1b) wallets que entraron ANTES de pumps recientes (tokens que suben de golpe); sin estado entre días: cada rutina empieza de cero
+    if not over() and pump_tokens:
+        try:
+            have = {w for w, _ in cands}
+            more = pumps.discover_wallets(g, {"tokens": {}, "stats": {}}, now, discover, max_tokens=pump_tokens, max_wallets=150,
+                                          skip=known | have, log=log)
+            log(f"wallets nuevas desde tokens que pumpean: {len(more)}")
+            cands += more
+        except Exception as e:
+            log(f"  pumps: {str(e)[:80]}")
     cands.sort(key=lambda x: -((x[1]["pnl"] or 0) * min(1.0, (x[1]["buys"] or 0) / 100.0 + 0.5)))
     todo = [w for w, _ in cands[:verify_n]] + pick_refresh(prev, refresh_n)
     log(f"a verificar: {len(todo)} ({min(len(cands), verify_n)} nuevas + refresco)")

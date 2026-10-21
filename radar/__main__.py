@@ -416,6 +416,27 @@ def cmd_daily_batches(cfg, a):
     print(f"{sum(len(x) for x in b)} escrituras en {len(b)} lotes: {os.path.join(a.dir, 'batches.json')}")
 
 
+def cmd_pumps(cfg, a):
+    """Tokens que pumpean ahora y quién entró antes del pump (GMGN, solo lectura). Acumula en --out; repetir cada pocas horas añade tokens nuevos."""
+    import json as _json
+    from . import discover, pumps
+    from .sources.gmgn import Gmgn
+    g = Gmgn(cfg)
+    if not g.available:
+        raise SystemExit("Falta GMGN_API_KEY.")
+    data = {"tokens": {}, "stats": {}}
+    if os.path.exists(a.out):
+        try:
+            data = _json.load(open(a.out))
+        except Exception:
+            pass
+    out = pumps.discover_wallets(g, data, time.time(), discover, max_tokens=a.max_tokens, max_wallets=a.max_wallets, min_pnl=a.min_pnl,
+                                 min_buys=a.min_buys, min_profit=a.min_profit, min_winrate=a.min_winrate,
+                                 log=lambda m: print(m, flush=True), save=lambda d: _json.dump(d, open(a.out, "w")))
+    open(a.candidates, "w").write("\n".join(w for w, _ in out) + ("\n" if out else ""))
+    print(f"candidatas tras el filtro de 30 días (rentab. >= {a.min_pnl:.0%}, >= {a.min_buys} compras): {len(out)} -> {a.candidates}", flush=True)
+
+
 def cmd_migrants(cfg, a):
     """Tokens ya migrados de pump.fun (histórico): ¿qué wallets repiten aciertos de x5+ en menos de 30 min? (GMGN, solo lectura)."""
     import json as _json
@@ -712,6 +733,15 @@ def main():
     mg.add_argument("--max-hold", type=int, default=1800)
     mg.add_argument("--min-tokens", type=int, default=3)
     mg.add_argument("--out", default="data/migrants.json")
+    pu = sub.add_parser("pumps")
+    pu.add_argument("--out", default="data/pumps.json")
+    pu.add_argument("--candidates", default="data/pump_candidates.txt")
+    pu.add_argument("--max-tokens", type=int, default=80)
+    pu.add_argument("--max-wallets", type=int, default=400)
+    pu.add_argument("--min-pnl", type=float, default=0.30)
+    pu.add_argument("--min-buys", type=int, default=20)
+    pu.add_argument("--min-profit", type=float, default=1000.0)
+    pu.add_argument("--min-winrate", type=float, default=0.35)
     ct = sub.add_parser("cotrade")
     ct.add_argument("--deep", required=True)
     ct.add_argument("--seeds", required=True)
@@ -743,7 +773,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "migrants": cmd_migrants, "daily-batches": cmd_daily_batches}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "migrants": cmd_migrants, "pumps": cmd_pumps, "daily-batches": cmd_daily_batches}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

@@ -275,3 +275,23 @@ class CrossingTest(unittest.TestCase):
         self.assertEqual(s["pre"]["n"], 3)
         self.assertEqual(s["post"]["n"], 1)
         self.assertAlmostEqual(s["a_punto"]["er"], ((2.0 - 1) + (0.85 - 1)) / 2 / 0.6, places=3)
+
+
+class PumpsTest(unittest.TestCase):
+    def test_is_pumping_and_early_buyers(self):
+        from radar import pumps
+        now = 10_000_000
+        t = {"market_cap": 200000, "liquidity": 30000, "creation_timestamp": now - 7200, "price_change_percent1h": 400.0, "price_change_percent5m": 5.0}
+        self.assertEqual(pumps.is_pumping(t, now)[0], "1h")
+        self.assertIsNone(pumps.is_pumping(dict(t, creation_timestamp=now - 300), now))  # lanzamiento de hace minutos
+        self.assertIsNone(pumps.is_pumping(dict(t, liquidity=1000), now))
+        self.assertIsNone(pumps.is_pumping(dict(t, is_wash_trading=True), now))
+        self.assertIsNone(pumps.is_pumping(dict(t, price_change_percent1h=50.0), now))
+        # precio actual 5,0 tras subir +400 %: previo 1,0
+        rows = [{"wallet": "a", "buy_usd": 500, "sell_usd": 1500, "avg_cost": 1.1, "profit": 1000, "transfer_in": False, "start": 1},
+                {"wallet": "b", "buy_usd": 500, "sell_usd": 1500, "avg_cost": 3.0, "profit": 1000, "transfer_in": False, "start": 1},   # entró a mitad del pump
+                {"wallet": "c", "buy_usd": 50, "sell_usd": 400, "avg_cost": 1.0, "profit": 350, "transfer_in": False, "start": 1},       # compra pequeña
+                {"wallet": "d", "buy_usd": 500, "sell_usd": 1500, "avg_cost": 1.0, "profit": 1000, "transfer_in": True, "start": 1}]    # recibido por transferencia
+        got = pumps.early_buyers(rows, 5.0, 400.0, 1e9)
+        self.assertEqual([g["wallet"] for g in got], ["a"])
+        self.assertEqual(got[0]["entry_mcap"], round(1.1 * 1e9))

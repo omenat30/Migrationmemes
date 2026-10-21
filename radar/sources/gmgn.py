@@ -269,6 +269,11 @@ class Gmgn:
                  "ath_mcap": _num(t.get("history_highest_market_cap")), "created": _num(t.get("creation_timestamp"))}
                 for t in (d.get("rank") or []) if t.get("address")]
 
+    def rank_raw(self, interval="1h", limit=100, order_by="swaps"):
+        """Filas crudas del ranking (con las variaciones de precio a 1 m, 5 m, 1 h y 6 h, liquidez, edad y marcas de riesgo)."""
+        d = self._request("GET", "/v1/market/rank", {"chain": self.chain, "interval": interval, "limit": limit, "order_by": order_by}) or {}
+        return [t for t in (d.get("rank") or []) if t.get("address")]
+
     def top_traders(self, mint, limit=100, order_by="profit", tag=None):
         """Wallets que más ganaron (o perdieron) en un token. `tag`: smart_degen (smart money) o renowned (KOL). Campos según la
         documentación oficial; los que falten salen None."""
