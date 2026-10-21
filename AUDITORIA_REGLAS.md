@@ -44,7 +44,7 @@ Las fuentes **solo proponen**; ninguna decide. Todas pasan por el mismo historia
 1. **Tokens en tendencia → mejores traders** (`discover.gmgn_candidates`): ranking de GMGN (intervalos 24 h y 6 h; orden por volumen y por nº de wallets
    «smart_degen»; ≤ 40 tokens por lista; solo mints `...pump`). Por token, los 100 mejores traders por ganancia; se conservan los de ganancia ≥ 300 USD en ese
    token. Prefiltro de 30 d con `wallet_stats` (una llamada por wallet, con caché): rentabilidad realizada ≥ **30 %**, ≥ **20** compras, ganancia realizada ≥ **1.000 USD**.
-2. **Smart money / KOL en directo** (`/v1/user/smartmoney`, `/v1/user/kol`): sondeo repetido que guarda cada operación con su precio → mcap de entrada. Se
+2. **Smart money / KOL en directo** (`/v1/user/smartmoney`, `/v1/user/kol`): sondeo repetido que guarda cada operación con su precio → mcap de entrada (`tools/analysis/poll_live.py`). Se
    agrupan wallets que compran repetidamente en una franja de mcap.
 3. **Tokens migrados** (`python -m radar migrants`): top 100 traders por ganancia de cada token migrado; «acierto rápido» = compra ≥ 150 USD, cobrado ≥ x5,
    posición ≤ 30 min. Se agrupan por wallet.
@@ -52,7 +52,7 @@ Las fuentes **solo proponen**; ninguna decide. Todas pasan por el mismo historia
    ≥ **150 %** (1 h) o ≥ **300 %** (6 h), mcap ≥ 15.000 USD, liquidez ≥ 8.000 USD, edad ≥ 30 min, sin marca de wash-trading ni honeypot. De cada uno se leen los 100
    mejores traders y se marcan los que **entraron antes del pump**: precio medio de compra ≤ **1,3 ×** el precio previo implícito (`precio_actual / (1 + subida)`),
    compra real ≥ 150 USD, no recibida por transferencia, y que cobraron ≥ 1,5 × lo gastado. Luego prefiltro de 30 d (≥ 30 %, ≥ 20 compras, ≥ 1.000 USD, acierto ≥ 35 %).
-5. **Co-operación** (`discover.cotrade`, `pool_trades`, `venue_trades`): wallets que operan los mismos tokens que una semilla buena.
+5. **Co-operación** (`discover.cotraders`, `pool_trades`, `venue_trades`; comando `cotrade`): wallets que operan los mismos tokens que una semilla buena.
 6. **Lista manual del usuario** (`watchlist/*.txt`).
 
 La tasa de acierto del descubrimiento es baja (≈ 2–5 % de las candidatas acaban cumpliendo los filtros).
@@ -128,7 +128,7 @@ se descartan mints con otro supply). La curva se completa a ≈ **383 SOL** (≈
 entradas de 24k–120k USD.
 
 **Clusters** (misma persona, heurística): dos wallets entran en el mismo token con ≤ 10 s de diferencia en ≥ 10 tokens y ≥ 20 % de los de la menor; se marcan con etiqueta
-«cluster». No es prueba de identidad on-chain. **Capital** (`radar/flows.py`): transferencias entrantes/salientes (GMGN), enlaces entre wallets seguidas, destinos comunes y
+«cluster». No es prueba de identidad on-chain. Esta detección **no está en `radar/`**: es el script `tools/analysis/clusters.py` y su resultado se escribió a mano en los documentos. **Capital** (`radar/flows.py`): transferencias entrantes/salientes (GMGN), enlaces entre wallets seguidas, destinos comunes y
 caídas de saldo ≥ 30 % entre barridos (si el saldo ≥ 5 SOL).
 
 ## 8. Estado de la evidencia (honesto)
@@ -140,7 +140,7 @@ caídas de saldo ≥ 30 % entre barridos (si el saldo ≥ 5 SOL).
 - El resultado positivo observado hasta ahora en el panel (simulado) **no es una garantía**; el usuario lo describe como «de momento rentable» tras ver las operaciones.
 - Ideas probadas y **descartadas** (ver `HIPOTESIS_v7.md`): (a) «entra antes de migrar y vende después» (los cruces salen +300–800 % por **sesgo de supervivencia**: solo se
   observan tokens que ya migraron; con la cifra justa «entra en curva» casi desaparece); (b) listas de «mejores traders de cada token» como fuente sin verificar (62 candidatas
-  «cerca de migrar»: 0 pasaron); (c) wallets que compran en el bloque de creación y venden en segundos (no copiables); (d) clusters perdedores.
+  «cerca de migrar»: 61 verificadas, 0 pasaron); (c) wallets que compran en el bloque de creación y venden en segundos (no copiables); (d) clusters perdedores.
 
 ## 9. Debilidades conocidas (revisar con prioridad)
 
@@ -189,6 +189,7 @@ caídas de saldo ≥ 30 % entre barridos (si el saldo ≥ 5 SOL).
 | Capital entre wallets | `radar/flows.py` |
 | Filtros del panel | `dashboard/copy.html::evalWallet` |
 | Conclusiones y descartes | `HIPOTESIS_v7.md` |
+| Scripts de análisis puntual (no forman parte del barrido) | `tools/analysis/` (ver `LEEME.md`: rutas de la sesión que hay que ajustar) |
 | Pruebas | `tests/` (`python3 -m unittest discover -s tests`; incluye paridad Python↔JS) |
 
 Reproducir una wallet: `python -m radar deep <fichero con direcciones> --source gmgn --days 60 --out <salida.json>` (necesita `GMGN_API_KEY` en `.env`; nunca se imprime ni se sube).
