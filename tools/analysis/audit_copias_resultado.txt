@@ -1,0 +1,36 @@
+81 posiciones del usuario (72 cerradas, 9 abiertas); cobertura {'pages': 14, 'reached_start': True, 'txs': 262, 'early_stop': False, 'source': 'gmgn'}
+
+CERRADAS: 72 · invertido 3897 USD · resultado +68 USD · acierto 32 %
+ABIERTAS/PARCIALES: 9 · coste 715 USD · ya cobrado de ellas 428 USD  (si valen 0: -287 USD)
+
+CURVA (resultado acumulado de las cerradas, por semana de salida):
+  semana 15-Oct: +232 USD
+  semana 22-Oct: +68 USD
+
+POR WALLET COPIADA (cerradas):
+  FnKYTBF3BG   n=  1 resultado     -46 USD  acierto   0%  retraso med   1512s  tu múltiplo - el suyo (med) -0.96
+  Cb4fr2USv9   n=  1 resultado     -37 USD  acierto   0%  retraso med    157s  tu múltiplo - el suyo (med) -0.50
+  67Nwfi9hgw   n=  1 resultado     -36 USD  acierto   0%  retraso med    926s  tu múltiplo - el suyo (med) -8.15
+  BUkpShoEWR   n=  2 resultado     -22 USD  acierto   0%  retraso med    612s  tu múltiplo - el suyo (med) -0.22
+  HxAu7MENte   n=  1 resultado     -15 USD  acierto   0%  retraso med   1785s  tu múltiplo - el suyo (med) -6.90
+  7JVQMwRj82   n=  1 resultado     -15 USD  acierto   0%  retraso med    691s  tu múltiplo - el suyo (med) -0.39
+  2GqMs4yik1   n=  1 resultado     -12 USD  acierto   0%  retraso med   1479s  tu múltiplo - el suyo (med) -0.45
+  DJQwtiowTJ   n=  1 resultado      -8 USD  acierto   0%  retraso med   1674s  tu múltiplo - el suyo (med) +0.34
+  FBfChxAZmk   n=  1 resultado      -1 USD  acierto   0%  retraso med    655s  tu múltiplo - el suyo (med) -12.94
+  3bzaJd5yZG   n=  3 resultado     +90 USD  acierto  67%  retraso med      0s  tu múltiplo - el suyo (med) +1.24
+  sin atribu   n= 59 resultado    +169 USD  acierto  36%  retraso med    nans  tu múltiplo - el suyo (med) +nan
+
+LAS 10 PEORES OPERACIONES:
+  8fzCqyuj 21-Oct 12:14 coste 85 -> -63 USD (x0.26) tenencia 0 min, copiada de — con — s de retraso
+  2x3kudsx 20-Oct 18:02 coste 84 -> -46 USD (x0.45) tenencia 808 min, copiada de FnKYTBF3 con 1512 s de retraso
+  9PWNywcL 21-Oct 19:00 coste 43 -> -43 USD (x0.00) tenencia 16 min, copiada de — con — s de retraso
+  6XfDyJQx 21-Oct 23:18 coste 42 -> -40 USD (x0.05) tenencia 46 min, copiada de — con — s de retraso
+  FdXDrgdu 21-Oct 19:58 coste 86 -> -40 USD (x0.54) tenencia 9 min, copiada de — con — s de retraso
+  svo7kGfy 21-Oct 14:04 coste 42 -> -37 USD (x0.12) tenencia 67 min, copiada de Cb4fr2US con 157 s de retraso
+  4idxEaW4 20-Oct 21:06 coste 42 -> -36 USD (x0.15) tenencia 665 min, copiada de 67Nwfi9h con 926 s de retraso
+  73xeqPrw 22-Oct 23:51 coste 40 -> -35 USD (x0.13) tenencia 15 min, copiada de — con — s de retraso
+  Bg3chyjU 22-Oct 09:48 coste 41 -> -27 USD (x0.34) tenencia 77 min, copiada de — con — s de retraso
+  HYLPKGj7 22-Oct 13:41 coste 41 -> -23 USD (x0.44) tenencia 2 min, copiada de — con — s de retraso
+
+TAMAÑO por operación (USD): mediana 42, mín 40, máx 256
+TENENCIA mediana tuya 50.9 min
