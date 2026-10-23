@@ -46,6 +46,7 @@ READ_ONLY = {
     ("POST", "/v1/user/wallet_profits"): 3,
     ("GET", "/v1/user/smartmoney"): 1,
     ("GET", "/v1/user/kol"): 1,
+    ("GET", "/v1/user/info"): 1,   # wallet(s) ligada(s) a la clave de API (solo clave de API, sin firma; añadido el 23-oct para auditar las copias del usuario)
 }
 
 
