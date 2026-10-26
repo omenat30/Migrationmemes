@@ -16,3 +16,9 @@ Datos: 81 posiciones (72 cerradas, 9 abiertas) leídas de la wallet pública del
 
 ## Hipótesis "sin esos errores" (retrospectiva, no es una prueba)
 Quitando salidas <2 min: +233 USD; quitando además las entradas de más de 60 USD: +286 USD (sobre ~3.400 USD invertidos, antes de comisiones).
+
+## Atribución a wallets del panel (26-oct, tras bajar 9 días de las 91 wallets)
+`atribuir_copias.py`: cada compra del usuario se atribuye a la wallet del panel que compró el mismo token entre 2 min después y 30 min antes (la más cercana). Cubre 46 de 75 cerradas; las 29 restantes (-119 USD) no vienen de wallets del panel.
+- **AqSUfx6Y**: 12 operaciones, 2 ganadoras, -227 USD, retraso 0 s. Sus propias posiciones en esos tokens hicieron lo mismo (x0,55 mediano), así que la pérdida es de la wallet, no de la copia. Últimos 9 días: ROI 4 %, 26 % de acierto. Marcada como descartada en el panel.
+- Con 1–2 operaciones (BTAKK8cx, 2GqMs4yi, 3eGj9qx6, HxAu7MEN) no hay evidencia suficiente. 2GqMs4yi ganó en el líder (x1,98) y perdió en la copia por retraso de 52 s a 25 min.
+- Aportan: DxM1hfY8 +294 USD (una x9,6), BcKqw3ZN +76, 3bzaJd5y +29, 5LLTYLm8 +14.

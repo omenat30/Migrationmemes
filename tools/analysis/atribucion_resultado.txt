@@ -1,0 +1,15 @@
+compras atribuibles: 51 de 83 | cerradas atribuibles 46 de 75
+wallet      n  gan  result  acier  retraso mi tenenc lider: tenencia/mult | n con varios lideres
+AqSUfx6Y   12    2    -227    17%      0s      15m   14m x0.55 | 0
+BTAKK8cx    1    0     -34     0%    -14s      15m   114m x0.02 | 1
+2GqMs4yi    2    0     -19     0%    766s      12m   26m x1.64 | 0
+HxAu7MEN    1    0     -17     0%      0s      24m   26m x0.87 | 0
+GAsnqm4X    4    2      -6    50%      1s      74m   167m x0.14 | 1
+3eGj9qx6    1    0      -1     0%    136s       1m   nanm xnan | 0
+5LLTYLm8    7    4     +14    57%      0s     438m   1367m x1.08 | 0
+HAFfm2fP    1    1     +25   100%     85s    1707m   nanm x3.43 | 0
+3bzaJd5y    2    1     +29    50%      0s     160m   1046m x1.50 | 0
+BcKqw3ZN    9    6     +76    67%      0s     190m   189m x0.80 | 2
+DxM1hfY8    6    2    +294    33%      0s     102m   245m x1.06 | 1
+total atribuido cerradas: +135 USD
+sin atribuir: 29 -119 USD
