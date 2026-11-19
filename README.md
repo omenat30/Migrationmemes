@@ -239,6 +239,7 @@ detectarla).
 | `python -m radar demo` | Panel con datos sintéticos |
 | `python -m radar analyze` | Informe de medición frente al azar |
 | `python -m radar export estado.json` | Exporta el estado para cargarlo en el artefacto |
+| `python -m radar sharks --theme "GTA,GTA6" --out F` | Tiburones: quién compró antes del pump fuerte (≤ 12,5 % de la capitalización máxima) y vendió con beneficio en los tokens con más volumen y en los de un tema; prefiltro de 30 días. Se verifican con `radar daily --extra-file F --skip-discovery` |
 | `python -m radar live --prev-dir D --versions V --dir OUT` | Seguimiento en vivo de las wallets copiadas: actualiza `live/*` y `meta/live` (lotes en OUT) |
 
 ## Mapa de archivos
