@@ -6,6 +6,20 @@ criterios y mide después, sin dinero, si los avisos sirven de algo frente al az
 > **Nada de este programa compra ni vende.** Solo detecta, puntúa, avisa y mide. No pide claves privadas ni frases
 > semilla y no tiene ninguna función que firme transacciones.
 
+## Seguimiento en vivo de las wallets copiadas (19-nov-2026)
+
+Prueba **fuera de muestra y sin dinero** de las 3 wallets que se van a copiar (`3bVNXBqu`, `GbjYhc9q`, `BNnN2Mqf`; plan de 5/5/3 USD por
+compra). Empieza el 18-nov-2026 a las 20:12 UTC, el barrido con el que se eligieron: nada de lo que abren después se usó para elegirlas.
+
+- `python -m radar live` (`radar/live.py`) lee cada día en GMGN la actividad nueva desde una marca de agua (último instante y sus `tx_hash`)
+  y acumula las posiciones en la colección `live` del panel. No relee el historial porque GMGN solo da ~1.000 filas por wallet.
+  Si algún día no llega hasta la marca, lo anota como hueco.
+- `meta/live` guarda la **promesa congelada**: las posiciones cerradas de los 60 días anteriores al inicio. Con ellas el simulador estimaba
+  cuánto se ganaría. A los 14 días se compara lo real con eso, con los mismos costes (`radar/audit.py`) y el coste extra que elijas.
+- El veredicto del panel no usa medias, que dependen de 1 o 2 golpes de x100. Mira en qué percentil de lo prometido cae cada posición nueva
+  (50 = igual). Con menos de 20 posiciones resueltas no concluye nada.
+- Lo ejecuta la rutina diaria antes del barrido. La paridad entre Python y el panel se comprueba en `tests/test_live.py`.
+
 ## Tu operación y el histórico (lo más importante ahora)
 
 Tu operación: **100 USD por trade, cierre si cae un 60 % desde tu entrada**. El objetivo es saber si, con esa regla y
@@ -225,6 +239,7 @@ detectarla).
 | `python -m radar demo` | Panel con datos sintéticos |
 | `python -m radar analyze` | Informe de medición frente al azar |
 | `python -m radar export estado.json` | Exporta el estado para cargarlo en el artefacto |
+| `python -m radar live --prev-dir D --versions V --dir OUT` | Seguimiento en vivo de las wallets copiadas: actualiza `live/*` y `meta/live` (lotes en OUT) |
 
 ## Mapa de archivos
 

@@ -416,6 +416,41 @@ def cmd_daily_batches(cfg, a):
     print(f"{sum(len(x) for x in b)} escrituras en {len(b)} lotes: {os.path.join(a.dir, 'batches.json')}")
 
 
+def cmd_live(cfg, a):
+    """Seguimiento en vivo sin dinero de las wallets copiadas (radar/live.py). Lee el estado del panel de --prev-dir y deja los lotes en --dir."""
+    from . import live
+    from .sources.dexscreener import DexScreener
+    from .sources.gmgn import Gmgn
+    from .util import RateLimiter
+    g = Gmgn(cfg)
+    if not g.available:
+        raise SystemExit("Falta GMGN_API_KEY en el entorno (secreto del entorno de la rutina).")
+    try:
+        sol = DexScreener(cfg, RateLimiter(2)).sol_usd()
+    except Exception:
+        sol = 100.0
+    prev = live.load_dir(a.prev_dir)
+    plan = None
+    if a.plan:
+        plan = {}
+        for item in a.plan.split(","):
+            addr, _, size = item.partition("=")
+            plan[addr.strip()] = float(size or live.SIZE_REF)
+    start = None if a.start is None else int(a.start)
+    if start is None and not prev["meta"]:
+        start = live.DEFAULT_START
+    meta, docs = live.run(g, prev, sol, plan=plan, start_ts=start, log=lambda m: print(m, flush=True))
+    versions = json.load(open(a.versions)) if a.versions else {}
+    writes = live.write_batches(meta, docs, versions, a.dir)
+    sizes = meta["plan"]
+    s = live.summarize(meta, docs, meta["ts"], sizes)
+    for addr, x in s.items():
+        print(f"{addr[:8]}… {x['days']:.1f} d · abiertas desde el inicio {x['opened']} (siguen abiertas {x['open']}) · "
+              f"cerradas {x['closed']['n']} · con bolsas {x['with_bags']['n']} · real ${x['real_usd']:.2f} · "
+              f"prometido para esas mismas posiciones ${(x['promise_usd'] or 0):.2f} (a ${sizes[addr]:g} por compra)", flush=True)
+    print(f"{len(writes)} escrituras en 1 lote: {os.path.join(a.dir, 'batches.json')}")
+
+
 def cmd_pumps(cfg, a):
     """Tokens que pumpean ahora y quién entró antes del pump (GMGN, solo lectura). Acumula en --out; repetir cada pocas horas añade tokens nuevos."""
     import json as _json
@@ -719,6 +754,12 @@ def main():
     db_.add_argument("--out-file", default="data/daily_out.json")
     db_.add_argument("--versions", default="", help="JSON {addr: version, __meta__: version} de lo que ya hay en el panel")
     db_.add_argument("--dir", default="data/daily_docs")
+    lv = sub.add_parser("live")
+    lv.add_argument("--prev-dir", required=True, help="carpeta con live/, meta/live.json y wallets/ exportados del panel")
+    lv.add_argument("--versions", default="", help='JSON {"live/<addr>": version, "meta/live": version}')
+    lv.add_argument("--dir", default="data/live_docs")
+    lv.add_argument("--plan", default="", help="addr=USD,addr=USD (por defecto, el plan guardado o el de radar/live.py)")
+    lv.add_argument("--start", default=None, help="inicio (epoch s) para wallets que aún no se siguen")
     fl = sub.add_parser("flows")
     fl.add_argument("file")
     fl.add_argument("--days", type=int, default=60)
@@ -773,7 +814,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "migrants": cmd_migrants, "pumps": cmd_pumps, "daily-batches": cmd_daily_batches}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "migrants": cmd_migrants, "pumps": cmd_pumps, "daily-batches": cmd_daily_batches, "live": cmd_live}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

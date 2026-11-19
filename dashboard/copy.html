@@ -74,6 +74,18 @@ ul.log li{display:flex;gap:10px;flex-wrap:wrap}
 .empty{padding:26px 8px;text-align:center;color:var(--muted)}
 .fail td{color:var(--muted)}
 td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
+.pane{display:flex;flex-direction:column;gap:18px}
+.pane[hidden]{display:none}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:none;padding:9px 14px;font-size:14px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+.vs{display:block;font-size:11.5px;color:var(--muted);font-family:var(--f-mono)}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:6px}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.verdict{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;background:var(--panel)}
+.verdict.good{border-left-color:var(--good)} .verdict.bad{border-left-color:var(--bad)} .verdict.warn{border-left-color:var(--warn)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:6px;border-radius:2px}
 @media (max-width:560px){h1{font-size:24px}.tile .v{font-size:22px}}
 </style>
 
@@ -86,6 +98,12 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
     <div class="status" id="status"><span class="pill stale"><span class="dot"></span>conectando…</span></div>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button type="button" role="tab" id="tab-main" aria-controls="pane-main" aria-selected="true">Wallets copiables</button>
+    <button type="button" role="tab" id="tab-live" aria-controls="pane-live" aria-selected="false">Seguimiento en vivo</button>
+  </nav>
+
+  <div class="pane" id="pane-main" role="tabpanel" aria-labelledby="tab-main">
   <section class="controls" aria-label="Controles de la simulación">
     <div class="row">
       <div class="fld">
@@ -167,6 +185,38 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
   </section>
 
   <section class="note" id="bias"></section>
+  </div>
+
+  <div class="pane" id="pane-live" role="tabpanel" aria-labelledby="tab-live" hidden>
+    <section class="controls" aria-label="Controles del seguimiento">
+      <div class="row">
+        <div class="fld"><span class="l">Tamaño por compra</span>
+          <div class="seg" id="l_mode" role="group" aria-label="Tamaño">
+            <button type="button" data-v="plan" aria-pressed="true">Tu plan</button>
+            <button type="button" data-v="fixed" aria-pressed="false">Fijo</button></div></div>
+        <div class="fld"><label for="l_size">Importe fijo (USD)</label><input type="number" id="l_size" min="1" step="1" value="15"></div>
+        <div class="fld"><label for="l_extra" title="Comisiones, propina y deslizamiento que pagas de verdad y que el modelo no recoge. En tus copias reales salieron ~4-5 % por vuelta.">Coste extra por vuelta (%)</label><input type="number" id="l_extra" min="0" step="0.5" value="0"></div>
+        <p class="muted" id="l_plan" style="margin:0;font-size:12.5px;max-width:52ch"></p>
+      </div>
+    </section>
+    <div id="l_msg"></div>
+    <section class="tiles" id="l_tiles" aria-live="polite"></section>
+    <section class="verdict" id="l_verdict" hidden></section>
+    <section class="card">
+      <h2>Resultado acumulado: real frente a lo que prometía el simulador</h2>
+      <div id="l_chart"></div>
+      <div class="legend"><span><i style="background:var(--good)"></i>Real (cerradas y bolsas, por fecha de entrada)</span><span><i style="background:var(--muted)"></i>Lo que prometía para esas mismas posiciones</span></div>
+    </section>
+    <section class="card">
+      <h2>Por wallet</h2>
+      <div class="scroll"><table id="l_tbl" style="min-width:900px"></table></div>
+    </section>
+    <section class="card">
+      <h2>Últimas posiciones</h2>
+      <div class="scroll"><table id="l_pos" style="min-width:820px"></table></div>
+    </section>
+    <section class="note" id="l_note"></section>
+  </div>
 </div>
 
 <script>
@@ -196,6 +246,32 @@ function simulate(positions,o){
   return {n:n,win:n?wins/n:null,expectedR:er,seR:n>1?Math.sqrt(v/n):null,totalUsd:eq,maxDd:dd,curve:curve,rows:rows};
 }
 /* ===== END SIM ===== */
+
+/* ===== BEGIN LIVE (misma lógica que radar/live.py; prueba de paridad en tests/test_live.py) =====
+   Fila de posición: [mint, símbolo, entrada, coste USD, coste SOL, comprado, vendido USD, vendido tokens, último movimiento, nº compras, nº ventas] */
+var LDAY=86400;
+function liveCost(meta){var c=(meta&&meta.cost)||{};return {fee:c.fee!=null?c.fee:0.012,entry_pen:c.entry_pen!=null?c.entry_pen:0.09,exit_pen:c.exit_pen!=null?c.exit_pen:0.05,grad_sol:c.grad_sol||383,k_curve:c.k_curve||30*1.073e9}}
+function liveImpact(em,sizeSol,c){if(!em||em<=0||em>c.grad_sol*1.15)return 0;return Math.min(sizeSol/Math.sqrt(em*c.k_curve/1e9),0.5)}
+function liveNet(mult,em,size,sol,extra,c){var pen=c.entry_pen+liveImpact(em,size/sol,c);var n=Math.max(mult*(1-c.exit_pen)*Math.pow(1-c.fee,2)/(1+pen)-1,-1);return Math.max(n-(extra||0),-1)}
+function liveEm(p){if(!p[5]||!p[4])return null;var em=p[4]/p[5]*1e9;return em<=1e6?em:null}
+function liveValue(p,now,staleDays){if(!p[3]||p[3]<=0||!p[5]||p[5]<=0)return [null,null];var f=p[7]>0?Math.min(1,p[5]/p[7]):1,mult=p[6]*f/p[3];
+  if(p[7]>=0.9*p[5])return ["closed",mult];if(now-p[8]>=staleDays*LDAY)return ["stale",mult];return ["open",mult]}
+function liveStats(a){var n=a.length,s=0,w=0;a.forEach(function(x){s+=x;if(x>0)w++});return {n:n,mean:n?s/n:null,win:n?w/n:null}}
+function liveSummary(meta,docs,now,sizes,extra){
+  var sol=(meta&&meta.sol_usd)||104.2,c=liveCost(meta),sd=(meta&&meta.stale_days)||7,out={},ws=(meta&&meta.wallets)||{};
+  Object.keys(ws).forEach(function(addr){
+    var w=ws[addr],size=sizes[addr]!=null?sizes[addr]:15,doc=docs[addr]||{},pos=doc.pos||[],closed=[],both=[],nOpen=0;
+    pos.forEach(function(p){var v=liveValue(p,now,sd);if(v[0]==null)return;if(v[0]==="open"){nOpen++;return}
+      var x=liveNet(v[1],liveEm(p),size,sol,extra,c);both.push(x);if(v[0]==="closed")closed.push(x)});
+    var prom=(w.hist||[]).map(function(r){return liveNet(r[1],r[2],size,sol,extra,c)});
+    var pc=liveStats(closed),pb=liveStats(both),pp=liveStats(prom),days=Math.max(0,(now-w.start_ts)/LDAY);
+    out[addr]={days:days,opened:pos.length,open:nOpen,open_usd:nOpen*size,closed:pc,with_bags:pb,promise:pp,
+      real_usd:both.reduce(function(s,x){return s+x},0)*size,promise_usd:pp.mean!=null?pp.mean*pb.n*size:null,
+      per_day:days>0?pos.length/days:null,promise_per_day:w.per_day14,gaps:(doc.gaps||[]).length};
+  });
+  return out;
+}
+/* ===== END LIVE ===== */
 
 function median(a){if(!a.length)return null;var s=a.slice().sort(function(x,y){return x-y}),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2}
 var $=function(id){return document.getElementById(id)};
@@ -383,6 +459,110 @@ function chart(agg){
     '<circle cx="'+X(last[0]).toFixed(1)+'" cy="'+Y(last[1]).toFixed(1)+'" r="4" fill="'+col+'"/>'+ticks+'</svg>';
 }
 
+/* ===== Pestaña «Seguimiento en vivo» (colección live + meta/live; los escribe `python -m radar live`) ===== */
+var liveMeta=null,liveDocs={},lstate={mode:"plan",size:15,extra:0},tab="main";
+var LSTATE={closed:"cerrada",stale:"bolsa",open:"abierta"};
+function fmtUsdL(x){if(x==null||isNaN(x))return "—";var a=Math.abs(x),s=a<100?a.toFixed(2).replace(".",","):Math.round(a).toLocaleString("es-ES");return (x<0&&a>=0.005?"−":"")+"$"+s}
+function fmtNet(x){return x==null?"—":(x>=0?"+":"−")+(Math.abs(x)*100).toFixed(1).replace(".",",")+" %"}
+function fmtWhen(ts){return new Date(ts*1000).toLocaleString("es-ES",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}
+function liveSizes(){var s={},ws=(liveMeta&&liveMeta.wallets)||{},plan=(liveMeta&&liveMeta.plan)||{};Object.keys(ws).forEach(function(a){s[a]=lstate.mode==="plan"&&plan[a]!=null?plan[a]:lstate.size});return s}
+function liveRows(now,sizes,extra){
+  var sol=liveMeta.sol_usd||104.2,c=liveCost(liveMeta),sd=liveMeta.stale_days||7,out=[];
+  Object.keys(liveMeta.wallets||{}).forEach(function(a){(((liveDocs[a]||{}).pos)||[]).forEach(function(p){var v=liveValue(p,now,sd);if(v[0]==null)return;
+    var x=v[0]==="open"?null:liveNet(v[1],liveEm(p),sizes[a],sol,extra,c);out.push({a:a,p:p,st:v[0],mult:v[1],net:x,usd:x==null?null:x*sizes[a]})})});
+  return out;
+}
+function liveChart(pts){
+  var el=$("l_chart");
+  if(!pts.length){el.innerHTML='<div class="empty">Todavía no hay posiciones resueltas (cerradas o quietas 7 días).</div>';return}
+  var W=Math.max(340,Math.min(900,el.clientWidth||900)),H=W<600?220:260,L=W<600?56:70,R=16,T=14,B=30,x0=pts[0].t,x1=pts[pts.length-1].t;if(x1<=x0)x1=x0+1;
+  var ys=[0];pts.forEach(function(q){ys.push(q.real);if(q.prom!=null)ys.push(q.prom)});
+  var y0=Math.min.apply(null,ys),y1=Math.max.apply(null,ys);if(y1===y0)y1=y0+1;var pad=(y1-y0)*0.08;y0-=pad;y1+=pad;
+  var X=function(t){return L+(t-x0)/(x1-x0)*(W-L-R)},Y=function(v){return T+(1-(v-y0)/(y1-y0))*(H-T-B)};
+  var step=niceStep((y1-y0)/4),g="",ticks="";
+  for(var v=Math.ceil(y0/step)*step;v<=y1;v+=step){g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v).toFixed(1)+'" y2="'+Y(v).toFixed(1)+'" stroke="var(--line)" stroke-width="'+(Math.abs(v)<step/1000?1.6:0.6)+'"/><text x="'+(L-8)+'" y="'+(Y(v)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--f-mono)">'+fmtUsdL(v)+'</text>'}
+  var nt=W<600?2:4;for(var i=0;i<=nt;i++){var t=x0+(x1-x0)*i/nt;ticks+='<text x="'+X(t).toFixed(1)+'" y="'+(H-8)+'" text-anchor="'+(i===0?"start":i===nt?"end":"middle")+'" font-size="11" fill="var(--muted)" font-family="var(--f-mono)">'+fmtDate(t)+'</text>'}
+  var real=pts.map(function(q){return X(q.t).toFixed(1)+","+Y(q.real).toFixed(1)}).join(" "),prom=pts.filter(function(q){return q.prom!=null}).map(function(q){return X(q.t).toFixed(1)+","+Y(q.prom).toFixed(1)}).join(" ");
+  var last=pts[pts.length-1],col=last.real>=0?"var(--good)":"var(--bad)";
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Resultado acumulado real frente al prometido">'+g+
+    (prom?'<polyline points="'+prom+'" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="5 4"/>':'')+
+    '<polyline points="'+real+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round"/><circle cx="'+X(last.t).toFixed(1)+'" cy="'+Y(last.real).toFixed(1)+'" r="4" fill="'+col+'"/>'+ticks+'</svg>';
+  document.querySelector("#pane-live .legend i").style.background=col;
+}
+function clearLive(){["l_tiles","l_chart","l_tbl","l_pos"].forEach(function(id){$(id).innerHTML=""});$("l_verdict").hidden=true}
+function renderLive(){
+  [].forEach.call($("l_mode").children,function(b){b.setAttribute("aria-pressed",String(b.dataset.v===lstate.mode))});
+  $("l_size").disabled=lstate.mode==="plan";
+  var plan=(liveMeta&&liveMeta.plan)||{};
+  $("l_plan").textContent=Object.keys(plan).length?"Tu plan: "+Object.keys(plan).map(function(a){return a.slice(0,8)+" "+plan[a]+" USD"}).join(" · ")+". La comparación es la misma con cualquier tamaño; cambia el importe en USD.":"";
+  $("l_note").innerHTML='<b>Cómo se mide.</b> Cada día la rutina lee en GMGN las compras y ventas nuevas de estas wallets y apunta cada token que empiezan a comprar <b>después del inicio</b>. Nada de esto se usó para elegirlas: es la prueba fuera de muestra, la que vale para decidir. «Lo que prometía» sale de sus posiciones cerradas de los 60 días anteriores al inicio, con los mismos costes: entrada un 9 % peor, salida un 5 % peor, 1,2 % de comisión por lado e impacto en la curva, más el coste extra que pongas arriba. Se supone una copia por token que sale en la misma proporción que la wallet. <b>Cerrada</b> = vendió al menos el 90 %. <b>Bolsa</b> = lleva 7 días quieta: cuenta lo vendido y el resto vale 0. <b>Abierta</b> = todavía no cuenta. Las wallets de tenencia larga (3bVNXBqu mantiene ~6 días de mediana) cierran tarde: los primeros días solo se resuelven las rápidas, así que la comparación justa es la del día 14. Es una simulación: no ejecuta compras ni ventas y no es consejo financiero.';
+  var msg=$("l_msg");
+  if(!connected){msg.innerHTML='<div class="note"><b>Sin base de datos.</b> Abre esta página con sesión iniciada para ver el seguimiento.</div>';clearLive();return}
+  if(!liveMeta||!liveMeta.wallets){msg.innerHTML='<div class="note"><b>El seguimiento todavía no tiene datos.</b> Lo carga la rutina diaria con <span class="mono">python -m radar live</span>.</div>';clearLive();return}
+  var now=liveMeta.ts||Date.now()/1000,sizes=liveSizes(),extra=lstate.extra/100,S=liveSummary(liveMeta,liveDocs,now,sizes,extra),ws=liveMeta.wallets,addrs=Object.keys(ws);
+  var age=(Date.now()/1000-now)/3600;
+  msg.innerHTML=age>36?'<div class="note"><b>Los datos tienen '+(age/24).toFixed(1).replace(".",",")+' días.</b> La rutina diaria no ha actualizado el seguimiento desde el '+fmtWhen(now)+'.</div>':"";
+  var T={opened:0,open:0,openUsd:0,resolved:0,real:0,prom:0,promN:0,perDay:0,promDay:0,days:0,start:Infinity};
+  addrs.forEach(function(a){var s=S[a];T.opened+=s.opened;T.open+=s.open;T.openUsd+=s.open_usd;T.resolved+=s.with_bags.n;T.real+=s.real_usd;
+    if(s.promise_usd!=null){T.prom+=s.promise_usd;T.promN+=s.with_bags.n}T.perDay+=s.per_day||0;T.promDay+=s.promise_per_day||0;T.days=Math.max(T.days,s.days);T.start=Math.min(T.start,ws[a].start_ts)});
+  var rows=liveRows(now,sizes,extra),res=rows.filter(function(r){return r.net!=null});
+  var nets=res.map(function(r){return r.net});
+  // Comparación robusta: percentil de cada posición nueva dentro de las posiciones que usó el simulador (50 = igual que lo prometido).
+  // No depende de los golpes enormes ni del tamaño; bajo «mismo comportamiento» la media de percentiles es 0,5 con desviación 1/sqrt(12 n).
+  var sol=liveMeta.sol_usd||104.2,cst=liveCost(liveMeta),PN={};
+  addrs.forEach(function(a){PN[a]=(ws[a].hist||[]).map(function(r){return liveNet(r[1],r[2],sizes[a],sol,extra,cst)}).sort(function(x,y){return x-y})});
+  var pctl=function(arr,x){var lo=0,hi=arr.length;while(lo<hi){var m=(lo+hi)>>1;if(arr[m]<x)lo=m+1;else hi=m}var lt=lo;hi=arr.length;while(lo<hi){var m2=(lo+hi)>>1;if(arr[m2]<=x)lo=m2+1;else hi=m2}return (lt+0.5*(lo-lt))/arr.length};
+  var us=res.filter(function(r){return PN[r.a].length}).map(function(r){return pctl(PN[r.a],r.net)});
+  var uMean=us.length?us.reduce(function(s,x){return s+x},0)/us.length:null,z=us.length?(uMean-0.5)*Math.sqrt(12*us.length):null;
+  var PM={};addrs.forEach(function(a){PM[a]=median(PN[a])});
+  var realMed=median(nets),promMed=median(res.filter(function(r){return PM[r.a]!=null}).map(function(r){return PM[r.a]}));   // mediana prometida, ponderada por posiciones resueltas
+  var target=liveMeta.target_days||14,pct=Math.min(100,T.days/target*100);
+  var tiles=[
+    ["Día de la prueba",T.days.toFixed(1).replace(".",",")+" de "+target,"",'desde el '+fmtWhen(T.start)+'<div class="bar"><i style="width:'+pct.toFixed(0)+'%"></i></div>'],
+    ["Posiciones nuevas",String(T.opened),"",(T.days>0?(T.perDay).toFixed(1).replace(".",","):"—")+" al día · esperaba "+T.promDay.toFixed(1).replace(".",",")],
+    ["Resultado real",fmtUsdL(T.real),cls(T.real),T.resolved+" resueltas (cerradas + bolsas)"],
+    ["Prometía en media",T.promN?fmtUsdL(T.prom):"—",T.promN?cls(T.prom):"","para esas "+T.promN+"; la media vive de unos pocos golpes enormes"],
+    ["Mediana por posición",fmtNet(realMed),cls(realMed),"prometida "+fmtNet(promMed)],
+    ["Abiertas ahora",String(T.open),"",fmtUsdL(T.openUsd)+" inmovilizados"]
+  ];
+  $("l_tiles").innerHTML=tiles.map(function(t){return '<div class="tile"><div class="l">'+t[0]+'</div><div class="v '+t[2]+'">'+t[1]+'</div><div class="n">'+t[3]+'</div></div>'}).join("");
+  var vd=$("l_verdict"),day="Día "+T.days.toFixed(1).replace(".",",")+" de "+target+". ",k="warn",txt;
+  var end=T.days<target?" La comparación que cuenta es la del día "+target+" ("+fmtDate(T.start+target*LDAY)+").":"";
+  var pc=uMean==null?"—":Math.round(uMean*100);
+  var how=' Sus posiciones nuevas caen, de media, en el <b>percentil '+pc+'</b> de las que usó el simulador (50 = igual que lo prometido; z = '+(z==null?"—":z.toFixed(1).replace(".",","))+', hace falta |z| ≥ 2 para decir que es distinto).';
+  if(us.length<20)txt='<b>'+day+'Solo '+us.length+' posiciones resueltas: todavía no se puede sacar ninguna conclusión.</b> Hacen falta al menos 20.'+(us.length?how:'')+end;
+  else if(z<=-1.96){k="bad";txt='<b>'+day+'Va peor de lo que prometía el simulador.</b>'+how+end}
+  else if(z>=1.96){k="good";txt='<b>'+day+'Va mejor de lo prometido.</b>'+how+' Puede ser suerte: no subas el tamaño por esto solo.'+end}
+  else txt='<b>'+day+'Por ahora es compatible con lo prometido.</b>'+how+end;
+  vd.className="verdict "+k;vd.innerHTML=txt;vd.hidden=false;
+  var pm={};addrs.forEach(function(a){pm[a]=S[a].promise.mean});
+  var srt=res.slice().sort(function(x,y){return x.p[2]-y.p[2]}),cr=0,cp=0,pts=srt.map(function(r){cr+=r.usd;if(pm[r.a]!=null)cp+=pm[r.a]*sizes[r.a];return {t:r.p[2],real:cr,prom:T.promN?cp:null}});
+  liveChart(pts);
+  var vs=function(a,b){return '<span class="vs">prom. '+b+'</span>'};
+  $("l_tbl").innerHTML='<thead><tr><th>Wallet</th><th>Tamaño</th><th>Desde</th><th>Posiciones</th><th>Al día</th><th>Cerradas</th><th>Bolsas</th><th>Abiertas</th><th>Acierto</th><th>Mediana</th><th>Neto medio</th><th>Resultado real</th><th>Prometido</th><th>Diferencia</th><th style="text-align:left">Avisos</th></tr></thead><tbody>'+addrs.map(function(a){
+    var s=S[a],d=liveDocs[a]||{},warn=[];
+    if(s.gaps)warn.push('<span class="tag bad" title="Días en los que GMGN no devolvió todo el historial desde la última lectura: pueden faltar posiciones">'+s.gaps+' hueco(s)</span>');
+    if(d.errors&&d.errors.length)warn.push('<span class="tag warn" title="'+esc(d.errors.map(function(e){return fmtWhen(e[0])+': '+e[1]}).join(" | "))+'">error de lectura</span>');
+    if(!(ws[a].hist||[]).length)warn.push('<span class="tag warn">sin promesa</span>');
+    var last=(d.pos||[]).reduce(function(m,p){return Math.max(m,p[8])},0);if(last&&now-last>3*LDAY)warn.push('<span class="tag warn">sin operar '+Math.floor((now-last)/LDAY)+' d</span>');
+    var diff=s.promise_usd!=null?s.real_usd-s.promise_usd:null;
+    return '<tr><td class="addr">'+addr(a)+'</td><td class="num">'+fmtUsdL(sizes[a])+'</td><td class="num">'+fmtDate(ws[a].start_ts)+'</td><td class="num">'+s.opened+'</td>'+
+      '<td class="num">'+(s.per_day==null?"—":s.per_day.toFixed(1).replace(".",","))+vs(0,s.promise_per_day==null?"—":s.promise_per_day.toFixed(1).replace(".",","))+'</td>'+
+      '<td class="num">'+s.closed.n+'</td><td class="num">'+(s.with_bags.n-s.closed.n)+'</td><td class="num">'+s.open+'</td>'+
+      '<td class="num">'+fmtPct(s.with_bags.win)+vs(0,fmtPct(s.promise.win))+'</td>'+(function(){var md=median(res.filter(function(r){return r.a===a}).map(function(r){return r.net}));return '<td class="num '+cls(md)+'">'+fmtNet(md)+vs(0,fmtNet(PM[a]))+'</td>'})()+'<td class="num '+cls(s.with_bags.mean)+'">'+fmtNet(s.with_bags.mean)+vs(0,fmtNet(s.promise.mean))+'</td>'+
+      '<td class="num '+cls(s.real_usd)+'">'+fmtUsdL(s.real_usd)+'</td><td class="num">'+fmtUsdL(s.promise_usd)+'</td><td class="num '+cls(diff)+'">'+fmtUsdL(diff)+'</td><td style="text-align:left">'+(warn.join(" ")||'<span class="muted">—</span>')+'</td></tr>'}).join("")+'</tbody>';
+  var recent=rows.slice().sort(function(x,y){return y.p[2]-x.p[2]}).slice(0,40);
+  $("l_pos").innerHTML='<thead><tr><th>Entrada</th><th>Wallet</th><th>Token</th><th>Puso la wallet</th><th>Compras / ventas</th><th>Estado</th><th>Múltiplo de la wallet</th><th>Tu resultado</th></tr></thead><tbody>'+(recent.length?recent.map(function(r){var p=r.p;
+    return '<tr><td class="num">'+fmtWhen(p[2])+'</td><td class="mono">'+esc(r.a.slice(0,8))+'</td><td><a href="https://gmgn.ai/sol/token/'+encodeURIComponent(p[0])+'" target="_blank" rel="noopener">'+esc(p[1]||short(p[0]))+'</a></td><td class="num">'+fmtUsdL(p[3])+'</td><td class="num">'+p[9]+' / '+p[10]+'</td>'+
+      '<td><span class="tag'+(r.st==="stale"?" warn":r.st==="open"?" new":"")+'">'+LSTATE[r.st]+'</span></td><td class="num">'+(r.mult==null?"—":"x"+r.mult.toFixed(2).replace(".",",")+(r.st==="open"?' <span class="muted">vendido hasta ahora</span>':''))+'</td>'+
+      '<td class="num '+cls(r.usd)+'">'+(r.usd==null?"—":fmtUsdL(r.usd))+'</td></tr>'}).join(""):'<tr><td colspan="8" class="empty">Todavía no han abierto ninguna posición desde el inicio.</td></tr>')+'</tbody>';
+}
+function setTab(t){tab=t==="live"?"live":"main";$("pane-main").hidden=tab!=="main";$("pane-live").hidden=tab!=="live";
+  $("tab-main").setAttribute("aria-selected",String(tab==="main"));$("tab-live").setAttribute("aria-selected",String(tab==="live"));
+  try{localStorage.setItem("copy_tab",tab)}catch(x){}
+  if(tab==="live"&&typeof renderLive==="function"&&liveMeta)renderLive()}
+function saveLive(){try{localStorage.setItem("copy_live1",JSON.stringify(lstate))}catch(x){}}
+
 var FPRE={mid:{hold:5,short:35,ops:20,hits:0,roi:30,idle:0,recent:0,copyR:0.1,mcMin:0,mcMax:0,bots:false},act:{hold:5,short:35,ops:20,hits:0,roi:30,idle:14,recent:5,copyR:0.1,mcMin:0,mcMax:0,bots:false},strict:{hold:30,short:25,ops:20,hits:1,roi:30,idle:14,recent:5,copyR:0.3,mcMin:0,mcMax:0,bots:false},loose:{hold:2,short:55,ops:20,hits:0,roi:5,idle:0,recent:0,copyR:0,mcMin:0,mcMax:0,bots:false},near:{hold:3,short:35,ops:20,hits:0,roi:20,idle:0,recent:0,copyR:0.3,mcMin:24,mcMax:120,bots:true}};
 function fpreCur(){for(var k in FPRE){var f=FPRE[k];if(f.hold===state.hold&&f.short===state.short&&f.ops===state.ops&&f.hits===state.hits&&f.roi===state.roi&&f.idle===state.idle&&f.recent===state.recent&&f.copyR===state.copyR&&f.mcMin===state.mcMin&&f.mcMax===state.mcMax&&f.bots===state.bots)return k}return ""}
 function buildControls(){
@@ -404,7 +584,12 @@ function readInputs(){
 }
 function save(){try{localStorage.setItem("copy_state12",JSON.stringify(state))}catch(x){}}
 buildControls();
-document.addEventListener("input",function(e){if(e.target.tagName==="INPUT"){readInputs();sync();render();save()}});
+document.addEventListener("input",function(e){if(e.target.tagName!=="INPUT")return;
+  if(e.target.id.indexOf("l_")===0){lstate.size=Math.max(1,num("l_size",15));lstate.extra=Math.min(100,num("l_extra",0));renderLive();saveLive();return}
+  readInputs();sync();render();save()});
+$("tab-main").addEventListener("click",function(){setTab("main")});
+$("tab-live").addEventListener("click",function(){setTab("live")});
+$("l_mode").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;lstate.mode=b.dataset.v;renderLive();saveLive()});
 $("presets").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;$("size").value=b.dataset.v;readInputs();sync();render();save()});
 $("delay").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.delay=+b.dataset.v;sync();render();save()});
 $("fpre").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;var f=FPRE[b.dataset.v];
@@ -413,17 +598,21 @@ $("fpre").addEventListener("click",function(e){var b=e.target.closest("button");
 $("mode").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.mode=b.dataset.v;sync();render();save()});
 try{var sv=JSON.parse(localStorage.getItem("copy_state12")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
   $("size").value=state.size;$("stop").checked=state.stop;$("robust").checked=state.robust!==false;$("bots").checked=!!state.bots;$("audit").checked=!!state.audit;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_roi").value=state.roi;$("f_copyr").value=state.copyR;$("f_idle").value=state.idle;$("f_recent").value=state.recent;$("f_mcmin").value=state.mcMin||0;$("f_mcmax").value=state.mcMax||0;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
-sync();render();
+try{var lv=JSON.parse(localStorage.getItem("copy_live1")||"null");if(lv){Object.keys(lstate).forEach(function(k){if(lv[k]!==undefined)lstate[k]=lv[k]});$("l_size").value=lstate.size;$("l_extra").value=lstate.extra}}catch(x){}
+try{setTab(localStorage.getItem("copy_tab")||"main")}catch(x){setTab("main")}
+sync();render();renderLive();
 
 (async function(){
   var db=null;
   try{db=await claude.use("db")}catch(x){}
-  if(!db){connected=false;render();return}
+  if(!db){connected=false;render();renderLive();return}
   connected=true;
   db.collection("wallets").onSnapshot(function(snap){
     wallets=snap.docs.map(function(d){var x=Object.assign({},d.data()||{});x.addr=x.addr||d.id;return x}).filter(function(w){return w.status!=="removed"});
     render();
-  },function(){connected=false;render()});
+  },function(){connected=false;render();renderLive()});
   db.doc("meta/sweep").onSnapshot(function(s){meta=s.exists?s.data():null;render()},function(){});
+  db.collection("live").onSnapshot(function(snap){var o={};snap.docs.forEach(function(d){o[d.id]=d.data()||{}});liveDocs=o;renderLive()},function(){});
+  db.doc("meta/live").onSnapshot(function(s){liveMeta=s.exists?s.data():null;renderLive()},function(){});
 })();
 </script>
