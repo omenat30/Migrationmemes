@@ -404,7 +404,8 @@ def cmd_daily(cfg, a):
     prev = daily.load_prev(a.prev_dir) if a.prev_dir else {}
     print(f"estado anterior: {len(prev)} wallets", flush=True)
     daily.run(cfg, g, prev, a.out, sol, new_tokens=a.tokens, new_wallets=a.new_wallets, verify_n=a.verify, refresh_n=a.refresh,
-              budget_s=a.budget_min * 60, log=lambda m: print(m, flush=True))
+              budget_s=a.budget_min * 60, log=lambda m: print(m, flush=True),
+              extra=(json.load(open(a.extra_file)).get("cands") if a.extra_file else None), skip_discovery=a.skip_discovery)
 
 
 def cmd_daily_batches(cfg, a):
@@ -449,6 +450,61 @@ def cmd_live(cfg, a):
               f"cerradas {x['closed']['n']} · con bolsas {x['with_bags']['n']} · real ${x['real_usd']:.2f} · "
               f"prometido para esas mismas posiciones ${(x['promise_usd'] or 0):.2f} (a ${sizes[addr]:g} por compra)", flush=True)
     print(f"{len(writes)} escrituras en 1 lote: {os.path.join(a.dir, 'batches.json')}")
+
+
+def cmd_sharks(cfg, a):
+    """Tiburones: quién compró antes del pump fuerte en los tokens con más volumen y en los de un tema (radar/sharks.py). Solo lectura."""
+    from . import discover, sharks
+    from .sources.gmgn import Gmgn
+    g = Gmgn(cfg)
+    if not g.available:
+        raise SystemExit("Falta GMGN_API_KEY en el entorno.")
+    now = int(time.time())
+    data = json.load(open(a.out)) if os.path.exists(a.out) else {"tokens": {}, "stats": {}}
+    save = lambda: json.dump(data, open(a.out, "w"))
+    patient = lambda fn: discover._patient(fn, log=lambda m: None)
+    uni = sharks.volume_universe(g, patient, now, limit=100, max_age_days=a.max_age, min_peak=a.min_peak, log=print)[:a.tokens]
+    print(f"tokens con volumen y pump grande: {len(uni)}", flush=True)
+    theme = []
+    if a.theme:
+        theme = sharks.theme_tokens([t.strip() for t in a.theme.split(",") if t.strip()], log=print)[:a.theme_tokens]
+        print(f"tokens del tema «{a.theme}»: {len(theme)}", flush=True)
+    todo = [dict(t, theme=False) for t in uni] + [dict(t, theme=True, supply=1e9, peak=None, vol=t["vol24"]) for t in theme if t["mint"] not in {u["mint"] for u in uni}]
+    for i, t in enumerate(todo, 1):
+        if t["mint"] in data["tokens"]:
+            continue
+        try:
+            rows = patient(lambda: g.top_traders(t["mint"], 100, "profit"))
+        except Exception as e:
+            print(f"  {t['sym']} error {str(e)[:60]}", flush=True)
+            continue
+        peak = t.get("peak") or max([(r.get("avg_sold") or 0) * t["supply"] for r in rows] + [t.get("mcap") or 0])
+        sh = sharks.early_sharks(rows, t["supply"], peak, t.get("created"))
+        data["tokens"][t["mint"]] = {"sym": t["sym"], "vol": t["vol"], "peak": round(peak), "theme": t["theme"], "sharks": sh}
+        save()
+        print(f"[{i}/{len(todo)}] {t['sym']}{' (tema)' if t['theme'] else ''} vol ${t['vol']:,.0f} · máx ${peak:,.0f}: {len(sh)} compraron antes y vendieron", flush=True)
+    pool = sharks.aggregate(data["tokens"])
+    rep = sum(1 for v in pool.values() if len(v) >= 2)
+    print(f"wallets tiburón: {len(pool)} · en >= 2 tokens: {rep}", flush=True)
+    order = sorted(pool, key=lambda w: (-len(pool[w]), -sum(x["sold"] - x["buy"] for _, _, x in pool[w])))[:a.max_stats]
+    for i, w in enumerate(order, 1):
+        if w in data["stats"]:
+            continue
+        try:
+            data["stats"][w] = patient(lambda: g.wallet_stats([w], "30d").get(w)) or {}
+        except Exception as e:
+            print(f"  estadísticas {w[:8]}: {str(e)[:60]}", flush=True)
+            continue
+        if i % 10 == 0:
+            save()
+            print(f"  [{i}/{len(order)}] estadísticas leídas", flush=True)
+    cands = sharks.rank_candidates(pool, data["stats"], now)
+    data["cands"] = cands
+    save()
+    print(f"candidatos tras el prefiltro (30 d rentable, activos en 3 días, no bots): {len(cands)}", flush=True)
+    for w, s in cands[:25]:
+        ev = "; ".join(f"{e['sym']} entrada ${e['entry_mcap']:,} ({e['peak_frac'] * 100:.1f}% del máx) x{e['realized']}" for e in s["evidence"][:3])
+        print(f"  {w[:8]}… {s['tokens']} token(s) · 30d {s['pnl'] * 100:+.0f}% · ${s['realized_profit']:,.0f} · acierto {s['winrate'] * 100:.0f}% · {ev}", flush=True)
 
 
 def cmd_pumps(cfg, a):
@@ -750,10 +806,20 @@ def main():
     dl.add_argument("--verify", type=int, default=8)
     dl.add_argument("--refresh", type=int, default=8)
     dl.add_argument("--budget-min", type=int, default=150)
+    dl.add_argument("--extra-file", default="", help="JSON con 'cands' [[wallet, stats], ...] (p. ej. de radar sharks) que se verifican primero")
+    dl.add_argument("--skip-discovery", action="store_true", help="no buscar candidatas nuevas propias; solo las de --extra-file y el refresco")
     db_ = sub.add_parser("daily-batches")
     db_.add_argument("--out-file", default="data/daily_out.json")
     db_.add_argument("--versions", default="", help="JSON {addr: version, __meta__: version} de lo que ya hay en el panel")
     db_.add_argument("--dir", default="data/daily_docs")
+    sk = sub.add_parser("sharks")
+    sk.add_argument("--out", default="data/sharks.json")
+    sk.add_argument("--tokens", type=int, default=60)
+    sk.add_argument("--max-age", type=float, default=10.0, help="días desde el lanzamiento")
+    sk.add_argument("--min-peak", type=float, default=300000.0, help="capitalización máxima mínima del token (USD)")
+    sk.add_argument("--theme", default="", help="términos de búsqueda separados por comas, p. ej. GTA,GTA6,GTA VI")
+    sk.add_argument("--theme-tokens", type=int, default=15)
+    sk.add_argument("--max-stats", type=int, default=160)
     lv = sub.add_parser("live")
     lv.add_argument("--prev-dir", required=True, help="carpeta con live/, meta/live.json y wallets/ exportados del panel")
     lv.add_argument("--versions", default="", help='JSON {"live/<addr>": version, "meta/live": version}')
@@ -814,7 +880,7 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config)
     {"run": cmd_run, "serve": cmd_serve, "demo": cmd_demo, "check": cmd_check, "calibrate": cmd_calibrate,
-     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "migrants": cmd_migrants, "pumps": cmd_pumps, "daily-batches": cmd_daily_batches, "live": cmd_live}[a.cmd](cfg, a)
+     "analyze": cmd_analyze, "export": cmd_export, "record": cmd_record, "backtest": cmd_backtest, "backfill": cmd_backfill, "study": cmd_study, "wallets": cmd_wallets, "judge": cmd_judge, "deep": cmd_deep, "sweep": cmd_sweep, "discover": cmd_discover, "cotrade": cmd_cotrade, "gmgn-discover": cmd_gmgn_discover, "flows": cmd_flows, "daily": cmd_daily, "migrants": cmd_migrants, "pumps": cmd_pumps, "daily-batches": cmd_daily_batches, "live": cmd_live, "sharks": cmd_sharks}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":
