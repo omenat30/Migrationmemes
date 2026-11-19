@@ -114,6 +114,33 @@ class ParityLiveTest(unittest.TestCase):
                     for k in ("n", "mean", "win"):
                         self.assertAlmostEqual(got[w][part][k], py[w][part][k], places=6, msg=f"{w} {part}.{k}")
 
+    def test_paridad_riesgo(self):
+        rng = random.Random(9)
+        ref = START
+        rows = {w: [[ref - rng.randint(0, 65 * DAY), rng.choice([None, 30, 600, 7200, 3 * DAY]), rng.choice([0.0, 0.3, 0.9, 1.1, 2.0, 15.0, 120.0]),
+                     rng.uniform(0.5, 9), rng.choice([None, 40.0, 200.0, 2e6])] for _ in range(n)]
+                for w, n in (("W1", 150), ("W2", 40), ("W3", 3))}
+        cm = live.cost_model()
+        for sizes, cap, mo, extra in (({"W1": 5, "W2": 5, "W3": 3}, 300.0, 10, 0.0), ({"W1": 15, "W2": 15, "W3": 15}, 20.0, 0, 0.05),
+                                      ({"W1": 3, "W2": 50, "W3": 5}, 1e6, 0, 0.02)):
+            py = live.risk(rows, sizes, 75.0, ref, cap, mo, extra)
+            js = _live_js() + "\nconst R=%s;console.log(JSON.stringify(liveRisk(R,%s,75,%d,%s,%d,%s,60,liveCost({cost:%s}))))" % (
+                json.dumps(rows), json.dumps(sizes), ref, json.dumps(cap), mo, json.dumps(extra), json.dumps(cm))
+            got = json.loads(subprocess.run(["node", "-e", js], capture_output=True, text=True, check=True).stdout)
+            for k in ("taken", "skipped", "pnl", "max_dd", "min_eq", "max_conc", "med_conc", "max_locked", "days", "turnover_month", "pnl_month"):
+                self.assertAlmostEqual(got[k], py[k], places=6, msg=f"{k} {sizes} {cap}")
+            for w in py["per"]:
+                for k, v in py["per"][w].items():
+                    if v is None:
+                        self.assertIsNone(got["per"][w][k], msg=f"{w} {k}")
+                    else:
+                        self.assertAlmostEqual(got["per"][w][k], v, places=6, msg=f"{w} {k}")
+            self.assertGreater(py["taken"], 0)
+        self.assertGreater(live.risk(rows, {"W1": 15, "W2": 15, "W3": 15}, 75.0, ref, 20.0, 0, 0.05)["skipped"], 0)   # el capital limita de verdad
+        r1 = live.risk(rows, {"W1": 5, "W2": 5, "W3": 3}, 75.0, ref, 1e6, 1, 0.0)                                   # y el máximo de abiertas también
+        self.assertGreater(r1["skipped"], 0)
+        self.assertEqual(r1["max_conc"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -295,3 +295,79 @@ def write_batches(meta, docs, versions, folder):
     writes.append(w)
     json.dump([writes], open(os.path.join(folder, "batches.json"), "w", encoding="utf-8"))
     return writes
+
+
+# ---------- tamaño y riesgo del plan (misma lógica que liveRisk del panel; paridad en tests/test_live.py) ----------
+
+def risk(wallet_rows, sizes, sol_usd, ref, capital=300.0, max_open=0, extra=0.0, days=60):
+    """Simula copiar las posiciones cerradas de los últimos `days` días de cada wallet con su tamaño, un capital y un máximo de
+    posiciones abiertas a la vez (0 = sin límite). Si no queda dinero libre o se llega al máximo, la entrada se salta.
+    wallet_rows: {addr: [[entrada, tenencia_s, múltiplo, coste_sol, mcap_sol], ...]} (filas `pos` de los documentos de wallet).
+    Es una cota OPTIMISTA: son los mismos datos con los que se eligieron y solo hay posiciones cerradas (sin bolsas)."""
+    per, ev = {}, []
+    for addr in sorted(wallet_rows):
+        size = sizes[addr]
+        rs = sorted([r for r in wallet_rows[addr] if r and r[2] is not None and ref - days * DAY <= r[0] <= ref], key=lambda r: (r[0], r[2]))
+        nets = [net(r[2], r[4] if len(r) > 4 else None, size, sol_usd, extra) for r in rs]
+        usd = [x * size for x in nets]
+        span = max(1.0, (ref - rs[0][0]) / DAY) if rs else None
+        gains = sorted((u for u in usd if u > 0), reverse=True)
+        streak = cur = 0
+        for x in nets:
+            cur = cur + 1 if x < 0 else 0
+            streak = max(streak, cur)
+        srt = sorted(usd, reverse=True)
+        n = len(rs)
+        per[addr] = {"n": n, "span": span, "per_month": (n / span * 30) if span else None,
+                     "turnover_month": (n / span * 30 * size) if span else None, "pnl": sum(usd),
+                     "pnl_month": (sum(usd) / span * 30) if span else None, "pnl_ex3": sum(srt[3:]) if n > 3 else None,
+                     "top3_share": (sum(gains[:3]) / sum(gains)) if gains else None, "streak": streak}
+        for r, x in zip(rs, nets):
+            ev.append((r[0], r[0] + (r[1] or 0), x, addr))
+    ev.sort(key=lambda e: (e[0], e[1], e[3], e[2]))
+    cash, opened, realized = float(capital), [], []
+    taken = skipped = max_conc = 0
+    locked = max_locked = 0.0
+    conc = []
+
+    def release(upto):
+        nonlocal cash, locked
+        keep = []
+        for o in opened:
+            if o[0] <= upto:
+                cash += o[1] * (1 + o[2])
+                locked -= o[1]
+                realized.append((o[0], o[3], o[4], o[1] * o[2]))
+            else:
+                keep.append(o)
+        opened[:] = keep
+
+    for ts, te, x, addr in ev:
+        release(ts)
+        size = sizes[addr]
+        if cash < size - 1e-9 or (max_open and len(opened) >= max_open):
+            skipped += 1
+            continue
+        cash -= size
+        locked += size
+        opened.append((te, size, x, ts, addr))
+        taken += 1
+        max_conc = max(max_conc, len(opened))
+        max_locked = max(max_locked, locked)
+        conc.append(len(opened))
+    release(float("inf"))
+    realized.sort()
+    eq = peak = min_eq = float(capital)
+    dd = 0.0
+    for _, _, _, pnl in realized:
+        eq += pnl
+        peak = max(peak, eq)
+        dd = max(dd, peak - eq)
+        min_eq = min(min_eq, eq)
+    conc.sort()
+    spans = [p["span"] for p in per.values() if p["span"]]
+    return {"per": per, "taken": taken, "skipped": skipped, "pnl": eq - capital, "max_dd": dd, "min_eq": min_eq,
+            "max_conc": max_conc, "med_conc": (conc[len(conc) // 2] if conc else None), "max_locked": max_locked,
+            "days": max(spans) if spans else None,
+            "turnover_month": sum(p["turnover_month"] or 0 for p in per.values()),
+            "pnl_month": sum(p["pnl_month"] or 0 for p in per.values())}

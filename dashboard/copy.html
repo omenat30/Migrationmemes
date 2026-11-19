@@ -212,6 +212,17 @@ td.why{white-space:normal;text-align:left;font-size:12px;min-width:320px}
       <div class="scroll"><table id="l_tbl" style="min-width:900px"></table></div>
     </section>
     <section class="card">
+      <h2>Tamaño y riesgo de tu plan</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:12.5px;max-width:110ch">Simulado con las posiciones cerradas de sus últimos 60 días, con el tamaño y el coste extra de arriba, entrando solo si queda dinero libre y no se pasa del máximo de abiertas. Son los mismos datos con los que se eligieron y no incluyen bolsas: <b>es el mejor caso, no lo que esperar</b>. Lo que de verdad cuenta es la prueba en vivo de arriba.</p>
+      <div class="row" style="margin-bottom:12px">
+        <div class="fld"><label for="l_cap">Capital (USD)</label><input type="number" id="l_cap" min="1" step="50" value="300"></div>
+        <div class="fld"><label for="l_maxopen" title="Si GMGN te deja limitarlo. 0 = sin límite">Máx. abiertas a la vez</label><input type="number" id="l_maxopen" min="0" step="1" value="10"></div>
+      </div>
+      <div class="tiles" id="l_risk"></div>
+      <div class="scroll" style="margin-top:12px"><table id="l_risktbl" style="min-width:900px"></table></div>
+      <p class="muted" id="l_risknote" style="margin:8px 0 0;font-size:12.5px"></p>
+    </section>
+    <section class="card">
       <h2>Últimas posiciones</h2>
       <div class="scroll"><table id="l_pos" style="min-width:820px"></table></div>
     </section>
@@ -270,6 +281,36 @@ function liveSummary(meta,docs,now,sizes,extra){
       per_day:days>0?pos.length/days:null,promise_per_day:w.per_day14,gaps:(doc.gaps||[]).length};
   });
   return out;
+}
+/* Tamaño y riesgo del plan: copia las posiciones cerradas de sus últimos `days` días con un capital y un máximo de abiertas a la vez
+   (0 = sin límite). Cota OPTIMISTA: mismos datos con los que se eligieron y sin bolsas. Igual que live.risk en Python. */
+function liveRisk(walletRows,sizes,sol,ref,capital,maxOpen,extra,days,c){
+  days=days||60;var per={},ev=[],DAYS=ref-days*LDAY;
+  Object.keys(walletRows).sort().forEach(function(a){
+    var size=sizes[a],rs=walletRows[a].filter(function(r){return r&&r[2]!=null&&r[0]>=DAYS&&r[0]<=ref}).sort(function(x,y){return x[0]-y[0]||x[2]-y[2]});
+    var nets=rs.map(function(r){return liveNet(r[2],r.length>4?r[4]:null,size,sol,extra,c)}),usd=nets.map(function(x){return x*size});
+    var n=rs.length,span=n?Math.max(1,(ref-rs[0][0])/LDAY):null,gains=usd.filter(function(u){return u>0}).sort(function(x,y){return y-x});
+    var streak=0,cur=0;nets.forEach(function(x){cur=x<0?cur+1:0;streak=Math.max(streak,cur)});
+    var srt=usd.slice().sort(function(x,y){return y-x}),sum=function(arr){return arr.reduce(function(s,x){return s+x},0)},tg=sum(gains);
+    per[a]={n:n,span:span,per_month:span?n/span*30:null,turnover_month:span?n/span*30*size:null,pnl:sum(usd),pnl_month:span?sum(usd)/span*30:null,
+      pnl_ex3:n>3?sum(srt.slice(3)):null,top3_share:gains.length?sum(gains.slice(0,3))/tg:null,streak:streak};
+    rs.forEach(function(r,i){ev.push([r[0],r[0]+(r[1]||0),nets[i],a])});
+  });
+  var cmp=function(x,y){return x<y?-1:x>y?1:0};
+  ev.sort(function(x,y){return x[0]-y[0]||x[1]-y[1]||cmp(x[3],y[3])||x[2]-y[2]});
+  var cash=capital,opened=[],realized=[],taken=0,skipped=0,maxConc=0,locked=0,maxLocked=0,conc=[];
+  function release(upto){var keep=[];opened.forEach(function(o){if(o[0]<=upto){cash+=o[1]*(1+o[2]);locked-=o[1];realized.push([o[0],o[3],o[4],o[1]*o[2]])}else keep.push(o)});opened=keep}
+  ev.forEach(function(e){release(e[0]);var size=sizes[e[3]];
+    if(cash<size-1e-9||(maxOpen>0&&opened.length>=maxOpen)){skipped++;return}
+    cash-=size;locked+=size;opened.push([e[1],size,e[2],e[0],e[3]]);taken++;maxConc=Math.max(maxConc,opened.length);maxLocked=Math.max(maxLocked,locked);conc.push(opened.length)});
+  release(Infinity);
+  realized.sort(function(x,y){return x[0]-y[0]||x[1]-y[1]||cmp(x[2],y[2])||x[3]-y[3]});
+  var eq=capital,peak=capital,minEq=capital,dd=0;realized.forEach(function(r){eq+=r[3];peak=Math.max(peak,eq);dd=Math.max(dd,peak-eq);minEq=Math.min(minEq,eq)});
+  conc.sort(function(x,y){return x-y});
+  var spans=Object.keys(per).map(function(a){return per[a].span}).filter(function(s){return s}),tm=0,pm=0;
+  Object.keys(per).forEach(function(a){tm+=per[a].turnover_month||0;pm+=per[a].pnl_month||0});
+  return {per:per,taken:taken,skipped:skipped,pnl:eq-capital,max_dd:dd,min_eq:minEq,max_conc:maxConc,med_conc:conc.length?conc[conc.length>>1]:null,
+    max_locked:maxLocked,days:spans.length?Math.max.apply(null,spans):null,turnover_month:tm,pnl_month:pm};
 }
 /* ===== END LIVE ===== */
 
@@ -460,7 +501,7 @@ function chart(agg){
 }
 
 /* ===== Pestaña «Seguimiento en vivo» (colección live + meta/live; los escribe `python -m radar live`) ===== */
-var liveMeta=null,liveDocs={},lstate={mode:"plan",size:15,extra:0},tab="main";
+var liveMeta=null,liveDocs={},lstate={mode:"plan",size:15,extra:0,cap:300,maxOpen:10},tab="main";
 var LSTATE={closed:"cerrada",stale:"bolsa",open:"abierta"};
 function fmtUsdL(x){if(x==null||isNaN(x))return "—";var a=Math.abs(x),s=a<100?a.toFixed(2).replace(".",","):Math.round(a).toLocaleString("es-ES");return (x<0&&a>=0.005?"−":"")+"$"+s}
 function fmtNet(x){return x==null?"—":(x>=0?"+":"−")+(Math.abs(x)*100).toFixed(1).replace(".",",")+" %"}
@@ -489,7 +530,34 @@ function liveChart(pts){
     '<polyline points="'+real+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round"/><circle cx="'+X(last.t).toFixed(1)+'" cy="'+Y(last.real).toFixed(1)+'" r="4" fill="'+col+'"/>'+ticks+'</svg>';
   document.querySelector("#pane-live .legend i").style.background=col;
 }
-function clearLive(){["l_tiles","l_chart","l_tbl","l_pos"].forEach(function(id){$(id).innerHTML=""});$("l_verdict").hidden=true}
+function clearLive(){["l_tiles","l_chart","l_tbl","l_pos","l_risk","l_risktbl","l_risknote"].forEach(function(id){$(id).innerHTML=""});$("l_verdict").hidden=true}
+function renderRisk(sizes,extra){
+  var addrs=Object.keys(liveMeta.wallets||{}),rowsBy={},docs={},missing=[];
+  addrs.forEach(function(a){var w=null;for(var i=0;i<wallets.length;i++)if(wallets[i].addr===a){w=wallets[i];break}
+    if(w&&w.pos&&w.pos.length){rowsBy[a]=w.pos;docs[a]=w}else missing.push(a.slice(0,8))});
+  if(!Object.keys(rowsBy).length){$("l_risk").innerHTML='<div class="empty">Todavía no hay historial de estas wallets en el panel.</div>';$("l_risktbl").innerHTML="";$("l_risknote").textContent="";return}
+  var ref=(meta&&meta.ts)||liveMeta.ts||Date.now()/1000,sol=(meta&&meta.sol_usd)||liveMeta.sol_usd||104.2,cap=Math.max(1,lstate.cap);
+  var R=liveRisk(rowsBy,sizes,sol,ref,cap,lstate.maxOpen,extra,60,liveCost(liveMeta)),ks=Object.keys(R.per);
+  var R0=liveRisk(rowsBy,sizes,sol,ref,1e12,0,extra,60,liveCost(liveMeta));   // sin límites: lo que haría falta para copiarlo todo
+  var maxSize=Math.max.apply(null,ks.map(function(a){return sizes[a]})),streak=Math.max.apply(null,ks.map(function(a){return R.per[a].streak})),perMonth=0;
+  ks.forEach(function(a){perMonth+=R.per[a].per_month||0});
+  var pc=function(x){return (x*100).toFixed(0)+" %"},tot=R.taken+R.skipped;
+  var tiles=[
+    ["Caída máxima simulada",fmtUsdL(-R.max_dd),R.max_dd>0?"neg":"",pc(R.max_dd/cap)+" de tu capital · lo más bajo: "+fmtUsdL(R.min_eq)],
+    ["Racha mala de 10",fmtUsdL(-10*maxSize),"neg","10 pérdidas completas seguidas = "+pc(10*maxSize/cap)+" del capital · la racha perdedora más larga vista: "+streak],
+    ["Rotación al mes",fmtUsdL(R.turnover_month),"",Math.round(perMonth)+" posiciones al mes · "+(extra>0?"tu coste extra son "+fmtUsdL(R.turnover_month*extra)+" al mes aunque no ganes nada":"con un 5 % de coste extra serían "+fmtUsdL(R.turnover_month*0.05)+" al mes aunque no ganes nada")],
+    ["Abiertas a la vez","máx. "+R.max_conc,R.skipped>tot*0.2?"neg":"","mediana "+(R.med_conc==null?"—":R.med_conc)+" · hasta "+fmtUsdL(R.max_locked)+" inmovilizados"+(R.skipped?" · <b>se saltan "+R.skipped+" de "+tot+" entradas ("+pc(R.skipped/tot)+")</b>":"")+" · copiarlo todo pediría hasta "+R0.max_conc+" abiertas ("+fmtUsdL(R0.max_locked)+"; mediana "+(R0.med_conc==null?"—":R0.med_conc)+")"],
+    ["Resultado simulado",fmtUsdL(R.pnl),cls(R.pnl),"en "+Math.round(R.days||0)+" días (≈ "+fmtUsdL(R.days?R.pnl/R.days*30:null)+" al mes) · mejor caso"]
+  ];
+  $("l_risk").innerHTML=tiles.map(function(t){return '<div class="tile"><div class="l">'+t[0]+'</div><div class="v '+t[2]+'">'+t[1]+'</div><div class="n">'+t[3]+'</div></div>'}).join("");
+  $("l_risktbl").innerHTML='<thead><tr><th>Wallet</th><th>Tamaño</th><th>Historial</th><th>Posiciones / mes</th><th>Rotación / mes</th><th>Racha perdedora</th><th title="Qué parte del beneficio positivo copiándola sale de sus 3 mejores posiciones">Beneficio en sus 3 mejores</th><th>Resultado (60 d)</th><th>Sin sus 3 mejores</th><th title="Posiciones que la propia wallet tiene abiertas según el último barrido">Abiertas (la wallet)</th></tr></thead><tbody>'+ks.map(function(a){
+    var p=R.per[a],m=(docs[a]&&docs[a].m)||{},partial=m.complete===false;
+    return '<tr><td class="addr">'+addr(a)+'</td><td class="num">'+fmtUsdL(sizes[a])+'</td><td class="num">'+Math.round(p.span||0)+' d'+(partial?' <span class="tag warn" title="GMGN no llegó a 60 días atrás: solo se ve el tramo más reciente">parcial</span>':'')+'</td>'+
+      '<td class="num">'+(p.per_month==null?"—":Math.round(p.per_month))+'</td><td class="num">'+fmtUsdL(p.turnover_month)+'</td><td class="num">'+p.streak+'</td>'+
+      '<td class="num">'+(p.top3_share==null?"—":pc(p.top3_share))+(p.top3_share!=null&&p.top3_share>0.5?' <span class="tag warn">depende de pocas</span>':'')+'</td>'+
+      '<td class="num '+cls(p.pnl)+'">'+fmtUsdL(p.pnl)+'</td><td class="num '+cls(p.pnl_ex3)+'">'+fmtUsdL(p.pnl_ex3)+'</td><td class="num">'+(m.n_open==null?"—":m.n_open)+'</td></tr>'}).join("")+'</tbody>';
+  $("l_risknote").textContent=(missing.length?"Sin historial en el panel: "+missing.join(", ")+". ":"")+"La racha perdedora cuenta posiciones seguidas en negativo, en orden de entrada. «Sin sus 3 mejores» quita sus 3 mejores resultados: si sale negativo, lo que gana depende de golpes raros que puedes no copiar a tiempo.";
+}
 function renderLive(){
   [].forEach.call($("l_mode").children,function(b){b.setAttribute("aria-pressed",String(b.dataset.v===lstate.mode))});
   $("l_size").disabled=lstate.mode==="plan";
@@ -556,6 +624,7 @@ function renderLive(){
     return '<tr><td class="num">'+fmtWhen(p[2])+'</td><td class="mono">'+esc(r.a.slice(0,8))+'</td><td><a href="https://gmgn.ai/sol/token/'+encodeURIComponent(p[0])+'" target="_blank" rel="noopener">'+esc(p[1]||short(p[0]))+'</a></td><td class="num">'+fmtUsdL(p[3])+'</td><td class="num">'+p[9]+' / '+p[10]+'</td>'+
       '<td><span class="tag'+(r.st==="stale"?" warn":r.st==="open"?" new":"")+'">'+LSTATE[r.st]+'</span></td><td class="num">'+(r.mult==null?"—":"x"+r.mult.toFixed(2).replace(".",",")+(r.st==="open"?' <span class="muted">vendido hasta ahora</span>':''))+'</td>'+
       '<td class="num '+cls(r.usd)+'">'+(r.usd==null?"—":fmtUsdL(r.usd))+'</td></tr>'}).join(""):'<tr><td colspan="8" class="empty">Todavía no han abierto ninguna posición desde el inicio.</td></tr>')+'</tbody>';
+  renderRisk(sizes,extra);
 }
 function setTab(t){tab=t==="live"?"live":"main";$("pane-main").hidden=tab!=="main";$("pane-live").hidden=tab!=="live";
   $("tab-main").setAttribute("aria-selected",String(tab==="main"));$("tab-live").setAttribute("aria-selected",String(tab==="live"));
@@ -585,7 +654,7 @@ function readInputs(){
 function save(){try{localStorage.setItem("copy_state12",JSON.stringify(state))}catch(x){}}
 buildControls();
 document.addEventListener("input",function(e){if(e.target.tagName!=="INPUT")return;
-  if(e.target.id.indexOf("l_")===0){lstate.size=Math.max(1,num("l_size",15));lstate.extra=Math.min(100,num("l_extra",0));renderLive();saveLive();return}
+  if(e.target.id.indexOf("l_")===0){lstate.size=Math.max(1,num("l_size",15));lstate.extra=Math.min(100,num("l_extra",0));lstate.cap=Math.max(1,num("l_cap",300));lstate.maxOpen=Math.round(num("l_maxopen",10));renderLive();saveLive();return}
   readInputs();sync();render();save()});
 $("tab-main").addEventListener("click",function(){setTab("main")});
 $("tab-live").addEventListener("click",function(){setTab("live")});
@@ -598,7 +667,7 @@ $("fpre").addEventListener("click",function(e){var b=e.target.closest("button");
 $("mode").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;state.mode=b.dataset.v;sync();render();save()});
 try{var sv=JSON.parse(localStorage.getItem("copy_state12")||"null");if(sv){Object.keys(state).forEach(function(k){if(sv[k]!==undefined)state[k]=sv[k]});
   $("size").value=state.size;$("stop").checked=state.stop;$("robust").checked=state.robust!==false;$("bots").checked=!!state.bots;$("audit").checked=!!state.audit;$("f_hold").value=state.hold;$("f_short").value=state.short;$("f_ops").value=state.ops;$("f_hits").value=state.hits;$("f_roi").value=state.roi;$("f_copyr").value=state.copyR;$("f_idle").value=state.idle;$("f_recent").value=state.recent;$("f_mcmin").value=state.mcMin||0;$("f_mcmax").value=state.mcMax||0;$("f_top").value=state.top;$("a_fee").value=state.fee;$("a_imp").value=state.imp;$("a_pen").value=state.pen==null?"":state.pen*100}}catch(x){}
-try{var lv=JSON.parse(localStorage.getItem("copy_live1")||"null");if(lv){Object.keys(lstate).forEach(function(k){if(lv[k]!==undefined)lstate[k]=lv[k]});$("l_size").value=lstate.size;$("l_extra").value=lstate.extra}}catch(x){}
+try{var lv=JSON.parse(localStorage.getItem("copy_live1")||"null");if(lv){Object.keys(lstate).forEach(function(k){if(lv[k]!==undefined)lstate[k]=lv[k]});$("l_size").value=lstate.size;$("l_extra").value=lstate.extra;$("l_cap").value=lstate.cap;$("l_maxopen").value=lstate.maxOpen}}catch(x){}
 try{setTab(localStorage.getItem("copy_tab")||"main")}catch(x){setTab("main")}
 sync();render();renderLive();
 
@@ -609,9 +678,9 @@ sync();render();renderLive();
   connected=true;
   db.collection("wallets").onSnapshot(function(snap){
     wallets=snap.docs.map(function(d){var x=Object.assign({},d.data()||{});x.addr=x.addr||d.id;return x}).filter(function(w){return w.status!=="removed"});
-    render();
+    render();renderLive();
   },function(){connected=false;render();renderLive()});
-  db.doc("meta/sweep").onSnapshot(function(s){meta=s.exists?s.data():null;render()},function(){});
+  db.doc("meta/sweep").onSnapshot(function(s){meta=s.exists?s.data():null;render();renderLive()},function(){});
   db.collection("live").onSnapshot(function(snap){var o={};snap.docs.forEach(function(d){o[d.id]=d.data()||{}});liveDocs=o;renderLive()},function(){});
   db.doc("meta/live").onSnapshot(function(s){liveMeta=s.exists?s.data():null;renderLive()},function(){});
 })();
