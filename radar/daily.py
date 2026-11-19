@@ -122,6 +122,8 @@ def run(cfg, g, prev, out_path, sol_usd, new_tokens=20, new_wallets=120, verify_
     preserve(docs, prev)
     # 3) movimientos de capital de las activas, candidatas buenas y las verificadas hoy
     tracked = [a for a, d in {**prev, **docs}.items() if d.get("status") in ("active",)] + [w for w in docs]
+    if extra:   # con candidatos externos, primero las verificadas hoy: son las que hay que decidir
+        tracked = [w for w in docs] + tracked
     tracked = list(dict.fromkeys(tracked))[:25]
     per = {}
     for w in tracked:
