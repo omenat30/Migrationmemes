@@ -34,7 +34,7 @@ def early_sharks(rows, supply, peak_mcap, created_ts=None, min_buy_usd=200.0, ma
         if realized < min_realized:
             continue
         secs = (r["start"] - created_ts) if (r.get("start") and created_ts) else None
-        out.append({"wallet": r["wallet"], "buy": round(buy), "sold": round(sell), "realized": round(realized, 2),
+        out.append({"wallet": r["wallet"], "buy": round(buy), "sold": round(sell), "realized": round(realized, 2), "start": r.get("start"),
                     "entry_mcap": round(entry), "peak_frac": round(entry / peak_mcap, 4),
                     "secs_after_launch": None if secs is None else int(secs), "tags": r.get("tags") or [], "funder": r.get("funder")})
     return out
@@ -114,3 +114,66 @@ def rank_candidates(pool, stats, now, min_pnl=0.3, min_realized=2000.0, min_winr
                                        "buy": x["buy"], "secs": x["secs_after_launch"]} for _, sym, x in ev])))
     out.sort(key=lambda x: (-x[1]["tokens"], -(x[1].get("realized_profit") or 0)))
     return out
+
+
+def link_groups(tokens, funders=None, window_s=180, min_after_launch_s=10):
+    """Conexiones entre wallets que compraron antes del pump (solo con lo ya leído; no gasta cuota de GMGN).
+    Une dos wallets si: (a) entraron en el MISMO token con menos de `window_s` segundos de diferencia (y ninguna en los primeros
+    `min_after_launch_s` s del lanzamiento: ahí compra el propio creador), (b) coinciden en 2 o más tokens, o (c) las fondeó la misma wallet.
+    Devuelve (grupos, razones): grupos = [{wallets, tokens, why}] de 2 o más wallets, ordenados por tamaño y repetición."""
+    funders = funders or {}
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b, _unused=None):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+    reasons = {}
+    seen_by_token = {}
+    for m, t in tokens.items():
+        ws = [s for s in (t.get("sharks") or []) if (s.get("secs_after_launch") is None or s["secs_after_launch"] >= min_after_launch_s)]
+        seen_by_token[m] = {s["wallet"] for s in ws}
+        ws = sorted((s for s in ws if s.get("start")), key=lambda s: s["start"])
+        for i, a in enumerate(ws):
+            for b in ws[i + 1:]:
+                if b["start"] - a["start"] > window_s:
+                    break
+                union(a["wallet"], b["wallet"], {})
+                for w in (a["wallet"], b["wallet"]):
+                    reasons.setdefault(w, set()).add("entró en %s con menos de %d s de diferencia de otra del grupo" % (t.get("sym"), window_s))
+    count = {}
+    for m, ws in seen_by_token.items():
+        for w in ws:
+            count.setdefault(w, []).append(m)
+    # coincidir en 2+ tokens solo conecta a las que además comparten algo más (mismo token cercano o mismo fondeador): por sí solo es
+    # lo que hace cualquier trader popular. Se anota, pero no une.
+    by_funder = {}
+    for w, f in funders.items():
+        if f:
+            by_funder.setdefault(f, []).append(w)
+    for f, ws in by_funder.items():
+        ws = [w for w in ws if w in count]
+        for w in ws[1:]:
+            union(ws[0], w, {})
+        if len(ws) > 1:
+            for w in ws:
+                reasons.setdefault(w, set()).add("fondeada por la misma wallet (%s…)" % f[:6])
+    groups = {}
+    for w in list(parent):
+        groups.setdefault(find(w), []).append(w)
+    out = []
+    for ws in groups.values():
+        if len(ws) < 2:
+            continue
+        toks = sorted({m for w in ws for m in count.get(w, [])})
+        out.append({"wallets": sorted(ws), "tokens": [tokens[m].get("sym") for m in toks], "n_tokens": len(toks),
+                    "why": sorted({r for w in ws for r in reasons.get(w, ())})})
+    out.sort(key=lambda g: (-g["n_tokens"], -len(g["wallets"])))
+    return out, reasons

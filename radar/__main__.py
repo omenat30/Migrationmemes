@@ -480,7 +480,7 @@ def cmd_sharks(cfg, a):
             continue
         peak = t.get("peak") or max([(r.get("avg_sold") or 0) * t["supply"] for r in rows] + [t.get("mcap") or 0])
         sh = sharks.early_sharks(rows, t["supply"], peak, t.get("created"))
-        data["tokens"][t["mint"]] = {"sym": t["sym"], "vol": t["vol"], "peak": round(peak), "theme": t["theme"], "sharks": sh}
+        data["tokens"][t["mint"]] = {"sym": t["sym"], "vol": t["vol"], "peak": round(peak), "theme": t["theme"], "created": t.get("created"), "sharks": sh}
         save()
         print(f"[{i}/{len(todo)}] {t['sym']}{' (tema)' if t['theme'] else ''} vol ${t['vol']:,.0f} · máx ${peak:,.0f}: {len(sh)} compraron antes y vendieron", flush=True)
     pool = sharks.aggregate(data["tokens"])
