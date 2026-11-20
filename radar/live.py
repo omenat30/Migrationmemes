@@ -35,9 +35,9 @@ SIZE_REF = 15.0
 
 # Las 3 wallets que el usuario va a copiar (decidido el 18-19 nov) y su plan de tamaño por compra en USD.
 DEFAULT_PLAN = {
-    "3bVNXBqupitzSZ5qM1yuVcymWD9GRLpUA3FoDKoHiUnz": 5.0,
-    "GbjYhc9qQHpyL2E8yMaqaa7XeNChhA86E7TxaYDxAHmA": 5.0,
-    "BNnN2MqfWLvgThYBsv6v8JQaYZXYKYahC5YCy27Ct1cX": 3.0,
+    "3bVNXBqupitzSZ5qM1yuVcymWD9GRLpUA3FoDKoHiUnz": 7.0,
+    "GbjYhc9qQHpyL2E8yMaqaa7XeNChhA86E7TxaYDxAHmA": 7.0,
+    "856qbbPXq5otkcc8dVTgbQQc4PaMWQ56Px9eQgo9juw7": 7.0,   # entra el 20-nov-2026 en lugar de BNnN2Mqf (demasiada rotación y 19 días de historial)
 }
 # Inicio por defecto: el barrido del 18-nov-2026 20:12 UTC con el que quedaron elegidas.
 DEFAULT_START = 1795032776
@@ -253,6 +253,10 @@ def run(g, prev, sol_usd, now=None, plan=None, start_ts=None, log=print):
     meta = dict(prev.get("meta") or {})
     wallets = dict(meta.get("wallets") or {})
     plan = dict(plan or meta.get("plan") or DEFAULT_PLAN)
+    retired = [a for a in wallets if a not in plan]
+    for a in retired:           # una wallet que sale del plan deja de seguirse; su documento `live/<addr>` se conserva tal cual
+        log(f"{a[:8]}… sale del seguimiento (su documento queda guardado)")
+        wallets.pop(a)
     docs = {}
     for addr in plan:
         if addr not in wallets:     # wallet nueva en el seguimiento: su promesa se congela ahora y no se toca nunca más

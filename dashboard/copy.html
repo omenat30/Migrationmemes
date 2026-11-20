@@ -570,9 +570,9 @@ function renderLive(){
   var now=liveMeta.ts||Date.now()/1000,sizes=liveSizes(),extra=lstate.extra/100,S=liveSummary(liveMeta,liveDocs,now,sizes,extra),ws=liveMeta.wallets,addrs=Object.keys(ws);
   var age=(Date.now()/1000-now)/3600;
   msg.innerHTML=age>36?'<div class="note"><b>Los datos tienen '+(age/24).toFixed(1).replace(".",",")+' días.</b> La rutina diaria no ha actualizado el seguimiento desde el '+fmtWhen(now)+'.</div>':"";
-  var T={opened:0,open:0,openUsd:0,resolved:0,real:0,prom:0,promN:0,perDay:0,promDay:0,days:0,start:Infinity};
+  var T={opened:0,open:0,openUsd:0,resolved:0,real:0,prom:0,promN:0,perDay:0,promDay:0,days:0,start:Infinity,startLast:0};
   addrs.forEach(function(a){var s=S[a];T.opened+=s.opened;T.open+=s.open;T.openUsd+=s.open_usd;T.resolved+=s.with_bags.n;T.real+=s.real_usd;
-    if(s.promise_usd!=null){T.prom+=s.promise_usd;T.promN+=s.with_bags.n}T.perDay+=s.per_day||0;T.promDay+=s.promise_per_day||0;T.days=Math.max(T.days,s.days);T.start=Math.min(T.start,ws[a].start_ts)});
+    if(s.promise_usd!=null){T.prom+=s.promise_usd;T.promN+=s.with_bags.n}T.perDay+=s.per_day||0;T.promDay+=s.promise_per_day||0;T.days=Math.max(T.days,s.days);T.start=Math.min(T.start,ws[a].start_ts);T.startLast=Math.max(T.startLast,ws[a].start_ts)});
   var rows=liveRows(now,sizes,extra),res=rows.filter(function(r){return r.net!=null});
   var nets=res.map(function(r){return r.net});
   // Comparación robusta: percentil de cada posición nueva dentro de las posiciones que usó el simulador (50 = igual que lo prometido).
@@ -586,8 +586,8 @@ function renderLive(){
   var realMed=median(nets),promMed=median(res.filter(function(r){return PM[r.a]!=null}).map(function(r){return PM[r.a]}));   // mediana prometida, ponderada por posiciones resueltas
   var target=liveMeta.target_days||14,pct=Math.min(100,T.days/target*100);
   var tiles=[
-    ["Día de la prueba",T.days.toFixed(1).replace(".",",")+" de "+target,"",'desde el '+fmtWhen(T.start)+'<div class="bar"><i style="width:'+pct.toFixed(0)+'%"></i></div>'],
-    ["Posiciones nuevas",String(T.opened),"",(T.days>0?(T.perDay).toFixed(1).replace(".",","):"—")+" al día · esperaba "+T.promDay.toFixed(1).replace(".",",")],
+    ["Día de la prueba",T.days.toFixed(1).replace(".",",")+" de "+target,"",'la wallet más antigua, desde el '+fmtWhen(T.start)+(T.startLast>T.start+3600?' · la más reciente, desde el '+fmtWhen(T.startLast):'')+'<div class="bar"><i style="width:'+pct.toFixed(0)+'%"></i></div>'],
+    ["Posiciones nuevas",String(T.opened),"",(T.days>0?(T.perDay).toFixed(1).replace(".",","):"—")+" al día (compras nuevas, no cierres)"],
     ["Resultado real",fmtUsdL(T.real),cls(T.real),T.resolved+" resueltas (cerradas + bolsas)"],
     ["Prometía en media",T.promN?fmtUsdL(T.prom):"—",T.promN?cls(T.prom):"","para esas "+T.promN+"; la media vive de unos pocos golpes enormes"],
     ["Mediana por posición",fmtNet(realMed),cls(realMed),"prometida "+fmtNet(promMed)],

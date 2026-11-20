@@ -67,6 +67,19 @@ class MergeTest(unittest.TestCase):
         self.assertAlmostEqual(live.net(1.0, None, 15, 75.0, extra=0.05), audit.net_return(1.0, None, 15, 75.0) - 0.05)
         self.assertEqual(live.net(0.0, None, 15, 75.0, extra=0.05), -1.0)
 
+    def test_wallet_fuera_del_plan_sale_y_la_nueva_entra(self):
+        class G:      # sin actividad nueva
+            def activity_page(self, *a, **k):
+                return [], None
+        old = {"meta": {"wallets": {"OLD": {"start_ts": START, "hist": [], "per_day14": 0}}, "plan": {"OLD": 3.0}},
+               "live": {"OLD": live.new_doc("OLD", START)}, "wallets": {"NEW": {"pos": [[START - DAY, 10, 2.0, 1.0, 50.0]], "m": {"span_days": 50}}}}
+        meta, docs = live.run(G(), old, 80.0, now=START + 5 * DAY, plan={"NEW": 7.0}, log=lambda m: None)
+        self.assertEqual(list(meta["wallets"]), ["NEW"])
+        self.assertEqual(list(docs), ["NEW"])
+        self.assertEqual(meta["wallets"]["NEW"]["start_ts"], START + 5 * DAY)       # la promesa se congela al entrar
+        self.assertEqual(len(meta["wallets"]["NEW"]["hist"]), 1)
+        self.assertEqual(meta["plan"], {"NEW": 7.0})
+
     def test_promesa_solo_antes_del_inicio(self):
         wdoc = {"pos": [[START - 70 * DAY, 10, 3.0, 1, 50], [START - DAY, 10, 2.0, 1, 50], [START + DAY, 10, 9.0, 1, 50]],
                 "m": {"span_days": 58}}
