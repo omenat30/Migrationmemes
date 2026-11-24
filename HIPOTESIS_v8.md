@@ -42,3 +42,11 @@ Total: 21 variantes (se suman a las más de 2.900 del inventario y cuentan para 
 - Pocas horas de datos de un solo régimen. Un resultado positivo pediría días de recogida adicional antes de creerlo.
 - Modelo de fill simplificado (sin competencia de bots por el mismo bloque ni fallos de transacción: ambos empeoran el resultado real).
 - Los tokens sin trades suficientes no se pueden simular y se informan aparte.
+
+## Resultado (24-nov-2026) — DESCARTADA
+Datos: 4.745 tokens nuevos de pump.fun descargados (≈14:00 UTC). Selección 2.845 · prueba 1.898 (248 sin trades).
+- **Selección**: las 21 variantes pierden. Mejor: S1 K40 tp50 sl25, −17,4 % por operación (IC −25,4/−9,3). Ciega S0: −29 % / −34 %. Referencia aleatoria: −33,6 %.
+- **Prueba (una sola vez, variante congelada)**: n=141, acierto 28 %, **−25,2 % por operación** (IC −31,8/−18,6), −1,77 SOL con 0,05 SOL por operación.
+- **Sensibilidad (prueba)**: latencia 3 s −26,3 %; 10 s −26,5 %; propina 0,006 −34,5 %; ambas −35,8 %.
+- Lectura: la señal de flujo mejora algo frente a la aleatoria (−17 % vs −34 %), pero no cubre ni las comisiones (2,25 % por lado) ni el impacto. Ni siquiera con latencia 3 s hay valor esperado positivo. El modelo es optimista (sin competencia de bots ni fallos de transacción), así que el real sería peor.
+- Límite: unas horas de un solo régimen. No se adopta; no se prueba con dinero.
